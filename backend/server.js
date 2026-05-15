@@ -190,13 +190,14 @@ async function sendPremiumInvoice(chatId, userId) {
   }
 }
 
-// ─── API ──────────────────────────────────────────────────────────────────────
+// ─── API Router (монтується ДО статики) ──────────────────────────────────────
+const api = express.Router();
 
-// Health check for routing test
-app.get('/api/ping', (req, res) => res.json({ pong: true }));
+api.get('/ping', (req, res) => res.json({ pong: true }));
 
-// Статус юзера (ліміти, премиум)
-app.get('/api/user/:userId/status', (req, res) => {
+api.get('/status', (req, res) => res.json({ ok: true, version: '2.0.0', bot: !!bot }));
+
+api.get('/user/:userId/status', (req, res) => {
   try {
     const { userId } = req.params;
     if (!userId || userId === 'null' || userId === 'undefined') {
@@ -209,8 +210,7 @@ app.get('/api/user/:userId/status', (req, res) => {
   }
 });
 
-// Створити invoice link для WebApp
-app.post('/api/user/:userId/invoice', async (req, res) => {
+api.post('/user/:userId/invoice', async (req, res) => {
   const { userId } = req.params;
   try {
     const result = await tgApi('createInvoiceLink', {
@@ -230,8 +230,7 @@ app.post('/api/user/:userId/invoice', async (req, res) => {
   }
 });
 
-// Запитати оракула (з перевіркою ліміту)
-app.post('/api/ask', (req, res) => {
+api.post('/ask', (req, res) => {
   const { question, userId } = req.body;
   if (!question || !question.trim()) {
     return res.status(400).json({ error: 'Вопрос не может быть пустым' });
@@ -251,16 +250,13 @@ app.post('/api/ask', (req, res) => {
     return res.json({ question: question.trim(), answer, status: getStatus(userId) });
   }
 
-  // Гість без userId — просто відповідаємо (frontend сам рахує)
   const answer = getOracleAnswer();
   res.json({ question: question.trim(), answer });
 });
 
-app.get('/api/status', (req, res) => {
-  res.json({ ok: true, version: '2.0.0', bot: !!bot });
-});
+app.use('/api', api);
 
-// ─── Static + SPA fallback (після всіх API) ───────────────────────────────────
+// ─── Static + SPA fallback (після /api) ──────────────────────────────────────
 app.use(express.static(path.join(__dirname, '../frontend')));
 app.get('/{*path}', (req, res) => {
   res.sendFile(path.join(__dirname, '../frontend/index.html'));
