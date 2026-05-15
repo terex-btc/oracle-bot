@@ -237,17 +237,24 @@ api.post('/ask', (req, res) => {
   }
 
   if (userId && userId !== 'guest') {
-    const status = getStatus(userId);
-    if (!status.canAsk) {
-      return res.status(403).json({
-        error: 'limit',
-        message: 'Лимит вопросов исчерпан',
-        status,
-      });
+    try {
+      const status = getStatus(userId);
+      if (!status.canAsk) {
+        return res.status(403).json({
+          error: 'limit',
+          message: 'Лимит вопросов исчерпан',
+          status,
+        });
+      }
+      increment(userId);
+      const answer = getOracleAnswer();
+      return res.json({ question: question.trim(), answer, status: getStatus(userId) });
+    } catch (e) {
+      console.error('[ask/userService]', e.message || e);
+      // fallback — відповідаємо без ліміту
+      const answer = getOracleAnswer();
+      return res.json({ question: question.trim(), answer });
     }
-    increment(userId);
-    const answer = getOracleAnswer();
-    return res.json({ question: question.trim(), answer, status: getStatus(userId) });
   }
 
   const answer = getOracleAnswer();
@@ -260,6 +267,15 @@ app.use('/api', api);
 app.use(express.static(path.join(__dirname, '../frontend')));
 app.get('/{*path}', (req, res) => {
   res.sendFile(path.join(__dirname, '../frontend/index.html'));
+});
+
+// ─── Global error handler ─────────────────────────────────────────────────────
+// eslint-disable-next-line no-unused-vars
+app.use((err, req, res, next) => {
+  console.error('[GlobalError]', err.message || err);
+  if (!res.headersSent) {
+    res.status(500).json({ error: err.message || 'Internal Server Error' });
+  }
 });
 
 // ─── Start ────────────────────────────────────────────────────────────────────
