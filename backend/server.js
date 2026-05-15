@@ -195,7 +195,7 @@ const api = express.Router();
 
 api.get('/ping', (req, res) => res.json({ pong: true }));
 
-api.get('/status', (req, res) => res.json({ ok: true, version: '2.0.0', bot: !!bot }));
+api.get('/status', (req, res) => res.json({ ok: true, version: '2.3.0', bot: !!bot }));
 
 api.get('/user/:userId/status', (req, res) => {
   try {
