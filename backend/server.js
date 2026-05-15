@@ -5,7 +5,15 @@ const path       = require('path');
 const https      = require('https');
 const TelegramBot = require('node-telegram-bot-api');
 const { getOracleAnswer } = require('./config/oracleAnswers');
-const { getStatus, increment, activatePremium } = require('./services/userService');
+let getStatus, increment, activatePremium;
+try {
+  ({ getStatus, increment, activatePremium } = require('./services/userService'));
+} catch (e) {
+  console.error('[userService] Load error:', e.message);
+  getStatus    = () => ({ canAsk: true, remaining: 2, isPremium: false });
+  increment    = () => {};
+  activatePremium = () => new Date().toISOString();
+}
 
 const app       = express();
 const PORT      = process.env.PORT || 3000;
@@ -186,11 +194,16 @@ async function sendPremiumInvoice(chatId, userId) {
 
 // Статус юзера (ліміти, премиум)
 app.get('/api/user/:userId/status', (req, res) => {
-  const { userId } = req.params;
-  if (!userId || userId === 'null' || userId === 'undefined') {
-    return res.json({ canAsk: true, remaining: 2, isPremium: false, guest: true });
+  try {
+    const { userId } = req.params;
+    if (!userId || userId === 'null' || userId === 'undefined') {
+      return res.json({ canAsk: true, remaining: 2, isPremium: false, guest: true });
+    }
+    res.json(getStatus(userId));
+  } catch (e) {
+    console.error('[status]', e.message);
+    res.json({ canAsk: true, remaining: 2, isPremium: false, error: e.message });
   }
-  res.json(getStatus(userId));
 });
 
 // Створити invoice link для WebApp
