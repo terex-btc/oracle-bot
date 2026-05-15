@@ -192,6 +192,9 @@ async function sendPremiumInvoice(chatId, userId) {
 
 // ─── API ──────────────────────────────────────────────────────────────────────
 
+// Health check for routing test
+app.get('/api/ping', (req, res) => res.json({ pong: true }));
+
 // Статус юзера (ліміти, премиум)
 app.get('/api/user/:userId/status', (req, res) => {
   try {
