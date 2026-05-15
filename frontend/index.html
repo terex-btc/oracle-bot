@@ -1,0 +1,101 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <title>Оракул Судьбы</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <div id="app">
+
+    <!-- Screen: Home -->
+    <div id="screen-home" class="screen active">
+      <div class="stars-bg" id="stars-bg"></div>
+
+      <header class="oracle-header">
+        <div class="oracle-badge">🔮 ОРАКУЛ СУДЬБЫ</div>
+        <p class="oracle-subtitle">Задай вопрос — получи ответ судьбы</p>
+      </header>
+
+      <div class="orb-section">
+        <div class="orb-wrapper" id="orb-wrapper">
+          <canvas id="orb-canvas" width="260" height="260"></canvas>
+          <div class="orb-ring ring-1"></div>
+          <div class="orb-ring ring-2"></div>
+          <div class="orb-ring ring-3"></div>
+          <div class="orb-glow" id="orb-glow"></div>
+        </div>
+        <div class="orb-status" id="orb-status">Сосредоточься на вопросе...</div>
+      </div>
+
+      <div class="question-section">
+        <div class="question-box">
+          <textarea
+            id="question-input"
+            placeholder="Напиши свой вопрос здесь..."
+            maxlength="200"
+            rows="3"
+          ></textarea>
+          <div class="char-counter"><span id="char-count">0</span>/200</div>
+        </div>
+        <button class="ask-btn" id="ask-btn">
+          <span class="ask-btn-inner">
+            <span class="ask-icon">🔮</span>
+            <span class="ask-text">Спросить Оракул</span>
+          </span>
+        </button>
+      </div>
+    </div>
+
+    <!-- Screen: Answer -->
+    <div id="screen-answer" class="screen">
+      <div class="stars-bg"></div>
+
+      <div class="answer-orb-mini" id="answer-orb-mini">
+        <canvas id="answer-orb-canvas" width="120" height="120"></canvas>
+      </div>
+
+      <div class="answer-card" id="answer-card">
+        <div class="answer-question-label">Твой вопрос:</div>
+        <div class="answer-question" id="answer-question"></div>
+
+        <div class="answer-divider">
+          <div class="divider-line"></div>
+          <div class="divider-rune">⟁</div>
+          <div class="divider-line"></div>
+        </div>
+
+        <div class="answer-verdict-wrap" id="answer-verdict-wrap">
+          <div class="answer-verdict" id="answer-verdict"></div>
+          <div class="answer-title" id="answer-title"></div>
+        </div>
+
+        <div class="answer-message" id="answer-message"></div>
+
+        <div class="answer-actions">
+          <button class="btn-again" id="btn-again">
+            🌀 Задать другой вопрос
+          </button>
+          <button class="btn-share" id="btn-share">
+            📤 Поделиться
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Loading overlay -->
+    <div id="loading-overlay" class="loading-overlay hidden">
+      <div class="loading-orb">
+        <div class="loading-ring"></div>
+        <div class="loading-ring"></div>
+        <div class="loading-ring"></div>
+        <div class="loading-text">Оракул читает судьбу...</div>
+      </div>
+    </div>
+
+  </div>
+
+  <script src="app.js" type="module"></script>
+</body>
+</html>
