@@ -129,7 +129,7 @@ html, body {
   display: flex;
   flex-direction: column;
   align-items: center;
-  padding: 20px 18px 28px;
+  padding: calc(20px + env(safe-area-inset-top)) 18px calc(28px + env(safe-area-inset-bottom));
   overflow-y: auto;
   opacity: 0;
   pointer-events: none;

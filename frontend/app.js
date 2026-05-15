@@ -6,6 +6,12 @@ if (tg) {
   tg.expand();
   tg.setHeaderColor('#03020f');
   tg.setBackgroundColor('#03020f');
+  // Full screen mode (Telegram Bot API 8.0+)
+  if (tg.requestFullscreen) tg.requestFullscreen();
+  // Якщо вийшли з fullscreen — повертаємо
+  tg.onEvent('fullscreenChanged', () => {
+    if (!tg.isFullscreen && tg.requestFullscreen) tg.requestFullscreen();
+  });
 }
 
 // ─── Cosmic Background ─────────────────────────────────────────
