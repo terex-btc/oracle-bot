@@ -19,6 +19,7 @@
       <header class="oracle-header">
         <div class="oracle-badge">🔮 ОРАКУЛ СУДЬБЫ</div>
         <p class="oracle-subtitle">задай вопрос — получи ответ судьбы</p>
+        <div class="question-counter" id="question-counter"></div>
       </header>
 
       <div class="orb-section">
@@ -80,6 +81,47 @@
           <button class="btn-again" id="btn-again">🌀 Новый вопрос</button>
           <button class="btn-share" id="btn-share">✨ Поделиться</button>
         </div>
+      </div>
+    </div>
+
+    <!-- Screen: Paywall -->
+    <div id="screen-paywall" class="screen">
+      <div class="stars-bg"></div>
+
+      <div class="paywall-wrap">
+        <div class="paywall-orb">⭐</div>
+        <h2 class="paywall-title">Оракул молчит...</h2>
+        <p class="paywall-sub">Ты использовал <strong>2 бесплатных вопроса</strong> сегодня</p>
+
+        <div class="paywall-card">
+          <div class="paywall-plan-free">
+            <span class="plan-label">🆓 Бесплатно</span>
+            <ul>
+              <li>✓ 2 вопроса в день</li>
+              <li>✗ Безлимитные вопросы</li>
+              <li>✗ Приоритет судьбы</li>
+            </ul>
+          </div>
+          <div class="paywall-plan-premium">
+            <div class="plan-badge">ЛУЧШИЙ ВЫБОР</div>
+            <span class="plan-label">⭐ Премиум</span>
+            <div class="plan-price">300 <span class="stars-icon">★</span><span class="plan-period">/месяц</span></div>
+            <ul>
+              <li>✓ Безлимитные вопросы</li>
+              <li>✓ Приоритет судьбы</li>
+              <li>✓ Особая аура Оракула</li>
+            </ul>
+          </div>
+        </div>
+
+        <button class="btn-buy-premium" id="btn-buy-premium">
+          <span class="buy-icon">★</span>
+          <span>Получить Премиум — 300 Stars</span>
+        </button>
+
+        <button class="btn-come-back" id="btn-come-back">
+          🌙 Вернуться завтра (бесплатно)
+        </button>
       </div>
     </div>
 

@@ -439,6 +439,34 @@ function buildOrbParticles() {
 }
 buildOrbParticles();
 
+// ─── User State ────────────────────────────────────────────────
+const userId = tg?.initDataUnsafe?.user?.id ?? 'guest';
+let userStatus = { canAsk: true, remaining: 2, isPremium: false };
+
+async function fetchStatus() {
+  if (userId === 'guest') return;
+  try {
+    const r = await fetch(`/api/user/${userId}/status`);
+    userStatus = await r.json();
+    updateCounter();
+  } catch {}
+}
+
+function updateCounter() {
+  const el = document.getElementById('question-counter');
+  if (!el) return;
+  if (userStatus.isPremium) {
+    el.textContent = '⭐ ПРЕМИУМ — БЕЗЛИМИТ';
+    el.className = 'question-counter premium';
+  } else if (userStatus.remaining !== null) {
+    const left = userStatus.remaining ?? 2;
+    el.textContent = left > 0
+      ? `${left} из 2 вопросов сегодня`
+      : 'Лимит исчерпан — вернись завтра';
+    el.className = `question-counter${left <= 1 ? ' low' : ''}`;
+  }
+}
+
 // ─── Screen Switch ──────────────────────────────────────────────
 function showScreen(id) {
   document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
@@ -477,10 +505,17 @@ async function askOracle() {
     const res = await fetch('/api/ask', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ question })
+      body: JSON.stringify({ question, userId })
     });
+
+    if (res.status === 403) {
+      // Ліміт вичерпано
+      showPaywall();
+      return;
+    }
     if (!res.ok) throw new Error();
     const data = await res.json();
+    if (data.status) { userStatus = data.status; updateCounter(); }
     showAnswer(question, data.answer);
   } catch {
     orbStatus.textContent = '⚠️ Туман мешает Оракулу...';
@@ -492,10 +527,59 @@ async function askOracle() {
   }
 }
 
+// ─── Paywall ────────────────────────────────────────────────────
+function showPaywall() {
+  showScreen('screen-paywall');
+  if (tg?.HapticFeedback) tg.HapticFeedback.notificationOccurred('error');
+}
+
+document.getElementById('btn-come-back').addEventListener('click', () => {
+  showScreen('screen-home');
+});
+
+document.getElementById('btn-buy-premium').addEventListener('click', async () => {
+  const btn = document.getElementById('btn-buy-premium');
+  btn.disabled = true;
+  btn.textContent = 'Загружаем...';
+
+  try {
+    const r = await fetch(`/api/user/${userId}/invoice`, { method: 'POST' });
+    const data = await r.json();
+    if (!data.url) throw new Error(data.error || 'Ошибка');
+
+    if (tg?.openInvoice) {
+      tg.openInvoice(data.url, (status) => {
+        if (status === 'paid') {
+          // Оновлюємо статус після оплати
+          setTimeout(async () => {
+            await fetchStatus();
+            if (userStatus.isPremium) {
+              showScreen('screen-home');
+              orbStatus.textContent = '⭐ Добро пожаловать в Премиум!';
+              setTimeout(() => { orbStatus.textContent = 'Сосредоточься на вопросе...'; }, 3000);
+            }
+          }, 1500);
+        }
+      });
+    } else {
+      // Fallback — відкрити в браузері
+      window.open(data.url, '_blank');
+    }
+  } catch (e) {
+    alert('Ошибка создания платежа: ' + e.message);
+  } finally {
+    btn.disabled = false;
+    btn.innerHTML = '<span class="buy-icon">★</span><span>Получить Премиум — 300 Stars</span>';
+  }
+});
+
 askBtn.addEventListener('click', askOracle);
 input.addEventListener('keydown', e => {
   if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); askOracle(); }
 });
+
+// Завантажуємо статус при старті
+fetchStatus();
 
 // ─── Show Answer ────────────────────────────────────────────────
 function showAnswer(question, answer) {
@@ -540,7 +624,13 @@ function showAnswer(question, answer) {
 }
 
 // ─── Again ─────────────────────────────────────────────────────
-document.getElementById('btn-again').addEventListener('click', () => {
+document.getElementById('btn-again').addEventListener('click', async () => {
+  // Якщо ліміт вичерпано — одразу paywall
+  if (!userStatus.isPremium && userStatus.remaining === 0) {
+    showPaywall();
+    return;
+  }
+
   const miniOrb = document.getElementById('answer-orb-mini');
   const card    = document.getElementById('answer-card');
   miniOrb.classList.remove('visible');

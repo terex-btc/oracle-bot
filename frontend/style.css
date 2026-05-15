@@ -586,6 +586,198 @@ textarea::placeholder { color: rgba(139, 127, 176, 0.4); }
 }
 .btn-share:hover { box-shadow: 0 0 16px rgba(245,200,66,0.15); }
 
+/* ─── Question Counter ──────────────────────────────────────── */
+.question-counter {
+  margin-top: 6px;
+  font-size: 11px;
+  font-family: 'Cinzel', serif;
+  letter-spacing: 1.5px;
+  color: var(--text-dim);
+  min-height: 18px;
+  transition: all 0.3s;
+}
+.question-counter.premium {
+  color: var(--gold);
+  text-shadow: 0 0 12px rgba(245,200,66,0.4);
+}
+.question-counter.low { color: var(--no-color); }
+
+/* ─── Paywall Screen ────────────────────────────────────────── */
+#screen-paywall {
+  justify-content: center;
+  gap: 0;
+}
+
+.paywall-wrap {
+  width: 100%;
+  max-width: 420px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 16px;
+  position: relative;
+  z-index: 2;
+  padding-top: var(--tg-safe-top, 0px);
+}
+
+.paywall-orb {
+  font-size: 56px;
+  line-height: 1;
+  filter: drop-shadow(0 0 20px rgba(245,200,66,0.6));
+  animation: glow-pulse 2.5s ease-in-out infinite;
+}
+
+.paywall-title {
+  font-family: 'Cinzel', serif;
+  font-size: 22px;
+  font-weight: 700;
+  color: var(--text);
+  text-align: center;
+  letter-spacing: 1px;
+}
+
+.paywall-sub {
+  font-size: 13px;
+  color: var(--text-dim);
+  text-align: center;
+  line-height: 1.6;
+  font-weight: 300;
+}
+.paywall-sub strong { color: var(--text); }
+
+.paywall-card {
+  width: 100%;
+  display: grid;
+  grid-template-columns: 1fr 1.3fr;
+  gap: 10px;
+}
+
+.paywall-plan-free, .paywall-plan-premium {
+  border-radius: 16px;
+  padding: 16px 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.paywall-plan-free {
+  background: rgba(255,255,255,0.03);
+  border: 1px solid rgba(255,255,255,0.08);
+}
+
+.paywall-plan-premium {
+  background: linear-gradient(145deg, rgba(245,200,66,0.08), rgba(139,61,255,0.08));
+  border: 1px solid rgba(245,200,66,0.3);
+  position: relative;
+  overflow: hidden;
+}
+.paywall-plan-premium::before {
+  content: '';
+  position: absolute;
+  top: 0; left: 0; right: 0; height: 1px;
+  background: linear-gradient(90deg, transparent, rgba(245,200,66,0.7), transparent);
+}
+
+.plan-badge {
+  position: absolute;
+  top: 10px; right: 10px;
+  font-size: 8px;
+  font-weight: 700;
+  letter-spacing: 1px;
+  color: var(--bg);
+  background: var(--gold);
+  border-radius: 6px;
+  padding: 2px 6px;
+  font-family: 'Inter', sans-serif;
+}
+
+.plan-label {
+  font-family: 'Cinzel', serif;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 1px;
+  color: var(--text);
+}
+
+.plan-price {
+  font-family: 'Cinzel', serif;
+  font-size: 22px;
+  font-weight: 900;
+  color: var(--gold);
+  text-shadow: 0 0 16px rgba(245,200,66,0.4);
+  display: flex;
+  align-items: baseline;
+  gap: 3px;
+}
+.stars-icon { font-size: 18px; }
+.plan-period { font-size: 11px; color: var(--text-dim); font-weight: 400; }
+
+.paywall-plan-free ul,
+.paywall-plan-premium ul {
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+.paywall-plan-free li, .paywall-plan-premium li {
+  font-size: 11px;
+  color: var(--text-dim);
+  font-weight: 400;
+  line-height: 1.4;
+}
+.paywall-plan-premium li { color: var(--text); }
+.paywall-plan-free li:first-child { color: var(--text); }
+
+.btn-buy-premium {
+  width: 100%;
+  border: none;
+  border-radius: 16px;
+  padding: 0;
+  cursor: pointer;
+  background: linear-gradient(135deg, #b8870a, #f5c842 40%, #ffe878 60%, #d4a017);
+  box-shadow: 0 4px 28px rgba(245,200,66,0.45), 0 0 0 1px rgba(245,200,66,0.2);
+  transition: transform 0.15s, box-shadow 0.2s;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  padding: 16px 20px;
+  font-family: 'Cinzel', serif;
+  font-size: 14px;
+  font-weight: 700;
+  color: #1a0a00;
+  letter-spacing: 0.5px;
+  position: relative;
+  overflow: hidden;
+}
+.btn-buy-premium::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(135deg, rgba(255,255,255,0.2) 0%, transparent 60%);
+}
+.btn-buy-premium:active { transform: scale(0.97); }
+
+.buy-icon {
+  font-size: 18px;
+  position: relative;
+  z-index: 1;
+}
+.btn-buy-premium span:last-child { position: relative; z-index: 1; }
+
+.btn-come-back {
+  background: transparent;
+  border: none;
+  color: var(--text-dim);
+  font-size: 12px;
+  cursor: pointer;
+  padding: 8px;
+  font-family: 'Inter', sans-serif;
+  opacity: 0.7;
+  transition: opacity 0.2s;
+}
+.btn-come-back:active { opacity: 1; }
+
 /* ─── Loading Overlay ───────────────────────────────────────── */
 .loading-overlay {
   position: fixed;
