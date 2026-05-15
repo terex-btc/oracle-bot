@@ -23,7 +23,7 @@ const WEBAPP_URL = process.env.WEBAPP_URL || `http://localhost:${PORT}`;
 // ─── Middleware ───────────────────────────────────────────────────────────────
 app.use(cors());
 app.use(express.json());
-app.use(express.static(path.join(__dirname, '../frontend')));
+// Статика ПІСЛЯ всіх API маршрутів (Express 5 — порядок важливий)
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 function tgApi(method, body) {
@@ -260,7 +260,8 @@ app.get('/api/status', (req, res) => {
   res.json({ ok: true, version: '2.0.0', bot: !!bot });
 });
 
-// ─── SPA fallback ─────────────────────────────────────────────────────────────
+// ─── Static + SPA fallback (після всіх API) ───────────────────────────────────
+app.use(express.static(path.join(__dirname, '../frontend')));
 app.get('/{*path}', (req, res) => {
   res.sendFile(path.join(__dirname, '../frontend/index.html'));
 });
