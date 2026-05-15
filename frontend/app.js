@@ -86,123 +86,322 @@ function createStars(container, count = 80) {
 }
 document.querySelectorAll('.stars-bg').forEach(c => createStars(c));
 
-// ─── Orb Canvas ────────────────────────────────────────────────
-function OrbCanvas(canvas, size = 240) {
+// ─── Premium Orb Canvas ────────────────────────────────────────
+function OrbCanvas(canvas, size = 280, isMain = false) {
+  const dpr = Math.min(window.devicePixelRatio || 1, 2);
+  canvas.width  = size * dpr;
+  canvas.height = size * dpr;
+  canvas.style.width  = size + 'px';
+  canvas.style.height = size + 'px';
+
   const ctx = canvas.getContext('2d');
-  const cx = size / 2, cy = size / 2, r = size * 0.44;
+  ctx.scale(dpr, dpr);
+
+  const cx = size / 2, cy = size / 2;
+  const r  = size * 0.42;
   let phase = 0;
   let color = { r: 139, g: 61, b: 255 };
   let targetColor = { ...color };
   let raf;
 
-  // Nebula blobs inside the orb
-  const blobs = Array.from({ length: 5 }, (_, i) => ({
-    angle: (i / 5) * Math.PI * 2,
-    speed: (Math.random() * 0.008 + 0.004) * (Math.random() > 0.5 ? 1 : -1),
-    radius: r * (0.18 + Math.random() * 0.22),
-    size: r * (0.28 + Math.random() * 0.22),
-    hue: Math.random(),
-  }));
-
   function lerp(a, b, t) { return a + (b - a) * t; }
+  function clamp(v, lo, hi) { return Math.max(lo, Math.min(hi, v)); }
+  function rgba(c, a) {
+    return `rgba(${clamp(c.r,0,255)|0},${clamp(c.g,0,255)|0},${clamp(c.b,0,255)|0},${a})`;
+  }
 
-  function draw() {
-    ctx.clearRect(0, 0, size, size);
+  // ── Internal galaxy stars ──────────────────────────────────────
+  const galaxyStars = Array.from({ length: isMain ? 90 : 30 }, () => {
+    const angle = Math.random() * Math.PI * 2;
+    const dist  = Math.pow(Math.random(), 0.6) * r * 0.88;
+    return {
+      x: Math.cos(angle) * dist,
+      y: Math.sin(angle) * dist * 0.75,
+      size: Math.random() * (isMain ? 1.6 : 1.0) + 0.3,
+      brightness: Math.random() * 0.7 + 0.3,
+      twinkleSpeed: Math.random() * 0.05 + 0.01,
+      twinkleOffset: Math.random() * Math.PI * 2,
+    };
+  });
 
-    // Clip to circle
+  // ── Nebula blobs ───────────────────────────────────────────────
+  const blobs = [
+    { angle: 0.5,  speed:  0.006, orbitR: r * 0.28, size: r * 0.55, type: 0 },
+    { angle: 2.1,  speed: -0.004, orbitR: r * 0.20, size: r * 0.45, type: 1 },
+    { angle: 3.8,  speed:  0.007, orbitR: r * 0.32, size: r * 0.50, type: 2 },
+    { angle: 5.2,  speed: -0.005, orbitR: r * 0.15, size: r * 0.40, type: 0 },
+    { angle: 1.2,  speed:  0.003, orbitR: r * 0.38, size: r * 0.42, type: 1 },
+  ];
+
+  // ── Sparkles (зовнішні іскри) ──────────────────────────────────
+  const sparkles = isMain ? Array.from({ length: 14 }, (_, i) => ({
+    angle: (i / 14) * Math.PI * 2 + Math.random() * 0.5,
+    orbitR: r * (1.15 + Math.random() * 0.45),
+    speed: (Math.random() * 0.008 + 0.003) * (Math.random() > 0.5 ? 1 : -1),
+    size: Math.random() * 2.5 + 0.8,
+    brightness: Math.random() * 0.6 + 0.4,
+    twinkle: Math.random() * Math.PI * 2,
+    twinkleSpeed: Math.random() * 0.08 + 0.03,
+  })) : [];
+
+  // ── Light rays ─────────────────────────────────────────────────
+  const rays = isMain ? Array.from({ length: 8 }, (_, i) => ({
+    angle: (i / 8) * Math.PI * 2,
+    length: r * (0.6 + Math.random() * 0.8),
+    width: Math.random() * 3 + 1,
+    speed: (Math.random() * 0.003 + 0.001) * (i % 2 ? 1 : -1),
+    opacity: Math.random() * 0.12 + 0.04,
+  })) : [];
+
+  // ── Energy veins (прожилки) ────────────────────────────────────
+  const veins = isMain ? Array.from({ length: 6 }, (_, i) => ({
+    angle: (i / 6) * Math.PI * 2,
+    speed: 0.004 + Math.random() * 0.003,
+    radius: r * (0.3 + Math.random() * 0.5),
+    opacity: 0.04 + Math.random() * 0.06,
+  })) : [];
+
+  function drawRays(t) {
+    rays.forEach(ray => {
+      ray.angle += ray.speed;
+      const pulse = 0.5 + Math.sin(t * 1.5 + ray.angle) * 0.5;
+      const op = ray.opacity * pulse;
+      if (op < 0.005) return;
+
+      const x1 = cx + Math.cos(ray.angle) * r;
+      const y1 = cy + Math.sin(ray.angle) * r;
+      const x2 = cx + Math.cos(ray.angle) * (r + ray.length);
+      const y2 = cy + Math.sin(ray.angle) * (r + ray.length);
+
+      const grad = ctx.createLinearGradient(x1, y1, x2, y2);
+      grad.addColorStop(0,   rgba(color, op));
+      grad.addColorStop(0.4, rgba(color, op * 0.4));
+      grad.addColorStop(1,   'transparent');
+
+      ctx.save();
+      ctx.beginPath();
+      ctx.moveTo(x1, y1);
+      ctx.lineTo(x2, y2);
+      ctx.lineWidth = ray.width * pulse;
+      ctx.strokeStyle = grad;
+      ctx.lineCap = 'round';
+      ctx.stroke();
+      ctx.restore();
+    });
+  }
+
+  function drawOuterAura() {
+    // 4 шари ауры з різним радіусом і прозорістю
+    const layers = [
+      { r: r * 2.4, op: 0.22 },
+      { r: r * 1.85, op: 0.32 },
+      { r: r * 1.45, op: 0.40 },
+      { r: r * 1.15, op: 0.30 },
+    ];
+    layers.forEach(l => {
+      const ag = ctx.createRadialGradient(cx, cy, r * 0.7, cx, cy, l.r);
+      ag.addColorStop(0,   rgba(color, l.op));
+      ag.addColorStop(0.4, rgba(color, l.op * 0.5));
+      ag.addColorStop(1,   'transparent');
+      ctx.fillStyle = ag;
+      ctx.beginPath();
+      ctx.arc(cx, cy, l.r, 0, Math.PI * 2);
+      ctx.fill();
+    });
+  }
+
+  function drawSparkles(t) {
+    sparkles.forEach(sp => {
+      sp.angle  += sp.speed;
+      sp.twinkle += sp.twinkleSpeed;
+      const brightness = sp.brightness * (0.5 + Math.sin(sp.twinkle) * 0.5);
+      if (brightness < 0.05) return;
+
+      const sx = cx + Math.cos(sp.angle) * sp.orbitR;
+      const sy = cy + Math.sin(sp.angle) * sp.orbitR * 0.85;
+
+      // Іскра — хрест із 4 ліній
+      const len = sp.size * (1 + brightness * 1.5);
+      ctx.save();
+      ctx.globalAlpha = brightness;
+      ctx.strokeStyle = `rgba(255,255,255,${brightness})`;
+      ctx.lineWidth = sp.size * 0.5;
+      ctx.lineCap = 'round';
+
+      // Вертикальна
+      ctx.beginPath();
+      ctx.moveTo(sx, sy - len); ctx.lineTo(sx, sy + len);
+      ctx.stroke();
+      // Горизонтальна
+      ctx.beginPath();
+      ctx.moveTo(sx - len, sy); ctx.lineTo(sx + len, sy);
+      ctx.stroke();
+      // Діагональна (менша)
+      ctx.lineWidth = sp.size * 0.25;
+      ctx.beginPath();
+      ctx.moveTo(sx - len * 0.5, sy - len * 0.5); ctx.lineTo(sx + len * 0.5, sy + len * 0.5);
+      ctx.stroke();
+      ctx.beginPath();
+      ctx.moveTo(sx + len * 0.5, sy - len * 0.5); ctx.lineTo(sx - len * 0.5, sy + len * 0.5);
+      ctx.stroke();
+
+      // Ядро
+      const core = ctx.createRadialGradient(sx, sy, 0, sx, sy, sp.size * 2);
+      core.addColorStop(0,   `rgba(255,255,255,${brightness * 0.9})`);
+      core.addColorStop(0.3, rgba(color, brightness * 0.5));
+      core.addColorStop(1,   'transparent');
+      ctx.fillStyle = core;
+      ctx.beginPath();
+      ctx.arc(sx, sy, sp.size * 2, 0, Math.PI * 2);
+      ctx.fill();
+
+      ctx.restore();
+    });
+  }
+
+  function drawOrb(t) {
     ctx.save();
     ctx.beginPath();
     ctx.arc(cx, cy, r, 0, Math.PI * 2);
     ctx.clip();
 
-    // Base gradient
-    const base = ctx.createRadialGradient(cx, cy - r * 0.15, r * 0.05, cx, cy, r);
-    base.addColorStop(0, `rgba(${Math.min(255, color.r + 70)},${Math.min(255, color.g + 50)},255,1)`);
-    base.addColorStop(0.45, `rgba(${color.r},${color.g},${color.b},0.95)`);
-    base.addColorStop(1,    `rgba(${Math.max(0, color.r - 80)},${Math.max(0, color.g - 40)},${Math.max(0, color.b - 30)},1)`);
+    // ── 1. Deep space base ──────────────────────────────────────
+    const base = ctx.createRadialGradient(cx - r * 0.1, cy - r * 0.1, r * 0.02, cx, cy, r);
+    const cr = color.r, cg = color.g, cb = color.b;
+    base.addColorStop(0,    `rgba(${clamp(cr+80,0,255)|0},${clamp(cg+60,0,255)|0},255,1)`);
+    base.addColorStop(0.35, `rgba(${cr|0},${cg|0},${cb|0},1)`);
+    base.addColorStop(0.7,  `rgba(${clamp(cr-40,0,255)|0},${clamp(cg-20,0,255)|0},${clamp(cb-10,0,255)|0},1)`);
+    base.addColorStop(1,    `rgba(${clamp(cr-90,0,255)|0},${clamp(cg-50,0,255)|0},${clamp(cb-30,0,255)|0},1)`);
     ctx.fillStyle = base;
     ctx.fillRect(0, 0, size, size);
 
-    // Nebula blobs
-    const t = phase * 0.018;
+    // ── 2. Galaxy stars inside ──────────────────────────────────
+    galaxyStars.forEach(s => {
+      const tw = 0.5 + Math.sin(t * s.twinkleSpeed * 60 + s.twinkleOffset) * 0.5;
+      const op = s.brightness * tw;
+      if (op < 0.05) return;
+      const sg = ctx.createRadialGradient(cx + s.x, cy + s.y, 0, cx + s.x, cy + s.y, s.size * 2);
+      sg.addColorStop(0,   `rgba(255,255,255,${op})`);
+      sg.addColorStop(0.5, `rgba(220,200,255,${op * 0.4})`);
+      sg.addColorStop(1,   'transparent');
+      ctx.fillStyle = sg;
+      ctx.beginPath();
+      ctx.arc(cx + s.x, cy + s.y, s.size * 2, 0, Math.PI * 2);
+      ctx.fill();
+    });
+
+    // ── 3. Nebula blobs ─────────────────────────────────────────
+    const blobColors = [
+      [0, 212, 255],   // cyan
+      [244, 63, 143],  // pink
+      [255, 200, 80],  // gold
+    ];
     blobs.forEach(b => {
       b.angle += b.speed;
-      const bx = cx + Math.cos(b.angle) * b.radius;
-      const by = cy + Math.sin(b.angle) * b.radius * 0.8;
+      const bx = cx + Math.cos(b.angle) * b.orbitR;
+      const by = cy + Math.sin(b.angle) * b.orbitR * 0.7;
+      const pulse = 0.10 + Math.sin(t * 1.2 + b.angle) * 0.05;
+      const bc = blobColors[b.type];
       const gb = ctx.createRadialGradient(bx, by, 0, bx, by, b.size);
-      const pulse = 0.12 + Math.sin(t + b.hue * 10) * 0.06;
-
-      if (b.hue < 0.33) {
-        gb.addColorStop(0, `rgba(0,212,255,${pulse})`);
-      } else if (b.hue < 0.66) {
-        gb.addColorStop(0, `rgba(244,63,143,${pulse})`);
-      } else {
-        gb.addColorStop(0, `rgba(255,255,255,${pulse * 0.7})`);
-      }
+      gb.addColorStop(0, `rgba(${bc[0]},${bc[1]},${bc[2]},${pulse})`);
+      gb.addColorStop(0.5, `rgba(${bc[0]},${bc[1]},${bc[2]},${pulse * 0.3})`);
       gb.addColorStop(1, 'transparent');
       ctx.fillStyle = gb;
       ctx.fillRect(0, 0, size, size);
     });
 
-    // Swirl streaks
-    for (let i = 0; i < 3; i++) {
-      const a = t + (i * Math.PI * 2) / 3;
-      const sx = cx + Math.cos(a) * r * 0.32;
-      const sy = cy + Math.sin(a) * r * 0.28;
-      const sg = ctx.createRadialGradient(sx, sy, 0, sx, sy, r * 0.45);
-      sg.addColorStop(0, `rgba(255,255,255,${0.05 + Math.sin(t * 2 + i) * 0.025})`);
-      sg.addColorStop(1, 'transparent');
-      ctx.fillStyle = sg;
+    // ── 4. Energy veins ─────────────────────────────────────────
+    veins.forEach(v => {
+      v.angle += v.speed;
+      const vx = cx + Math.cos(v.angle) * v.radius;
+      const vy = cy + Math.sin(v.angle) * v.radius * 0.8;
+      const vg = ctx.createRadialGradient(vx, vy, 0, vx, vy, r * 0.3);
+      vg.addColorStop(0, `rgba(255,255,255,${v.opacity})`);
+      vg.addColorStop(1, 'transparent');
+      ctx.fillStyle = vg;
       ctx.fillRect(0, 0, size, size);
-    }
+    });
 
-    // Depth rim shadow
-    const rim = ctx.createRadialGradient(cx, cy, r * 0.7, cx, cy, r);
-    rim.addColorStop(0, 'transparent');
-    rim.addColorStop(1, `rgba(${Math.max(0,color.r-100)},${Math.max(0,color.g-50)},${Math.max(0,color.b-20)},0.5)`);
-    ctx.fillStyle = rim;
+    // ── 5. Caustic ring (яскравий край) ────────────────────────
+    const caustic = ctx.createRadialGradient(cx, cy, r * 0.72, cx, cy, r);
+    caustic.addColorStop(0,    'transparent');
+    caustic.addColorStop(0.82, `rgba(${clamp(cr+40,0,255)|0},${clamp(cg+20,0,255)|0},255,0.08)`);
+    caustic.addColorStop(0.92, `rgba(${clamp(cr+80,0,255)|0},${clamp(cg+50,0,255)|0},255,0.18)`);
+    caustic.addColorStop(0.97, `rgba(255,255,255,0.22)`);
+    caustic.addColorStop(1,    `rgba(${clamp(cr-60,0,255)|0},${clamp(cg-30,0,255)|0},${cb|0},0.5)`);
+    ctx.fillStyle = caustic;
     ctx.fillRect(0, 0, size, size);
 
-    // Specular highlight
-    const hl = ctx.createRadialGradient(cx - r * 0.28, cy - r * 0.32, 0, cx - r * 0.1, cy - r * 0.15, r * 0.5);
-    hl.addColorStop(0,   'rgba(255,255,255,0.55)');
-    hl.addColorStop(0.4, 'rgba(255,255,255,0.08)');
-    hl.addColorStop(1,   'transparent');
-    ctx.fillStyle = hl;
+    // ── 6. Depth shadow ─────────────────────────────────────────
+    const shadow = ctx.createRadialGradient(cx + r * 0.15, cy + r * 0.2, r * 0.3, cx, cy, r);
+    shadow.addColorStop(0, 'transparent');
+    shadow.addColorStop(1, `rgba(0,0,0,0.35)`);
+    ctx.fillStyle = shadow;
     ctx.fillRect(0, 0, size, size);
 
-    // Small bottom reflection
-    const rl = ctx.createRadialGradient(cx + r * 0.2, cy + r * 0.32, 0, cx + r * 0.2, cy + r * 0.32, r * 0.25);
-    rl.addColorStop(0, 'rgba(255,255,255,0.07)');
-    rl.addColorStop(1, 'transparent');
-    ctx.fillStyle = rl;
+    // ── 7. Primary specular (головний відблиск) ─────────────────
+    const hl1 = ctx.createRadialGradient(
+      cx - r * 0.30, cy - r * 0.35, 0,
+      cx - r * 0.12, cy - r * 0.18, r * 0.55
+    );
+    hl1.addColorStop(0,   'rgba(255,255,255,0.70)');
+    hl1.addColorStop(0.15,'rgba(255,255,255,0.40)');
+    hl1.addColorStop(0.4, 'rgba(255,255,255,0.07)');
+    hl1.addColorStop(1,   'transparent');
+    ctx.fillStyle = hl1;
+    ctx.fillRect(0, 0, size, size);
+
+    // ── 8. Secondary specular (менший, знизу) ──────────────────
+    const hl2 = ctx.createRadialGradient(
+      cx + r * 0.28, cy + r * 0.30, 0,
+      cx + r * 0.28, cy + r * 0.30, r * 0.22
+    );
+    hl2.addColorStop(0,   'rgba(255,255,255,0.12)');
+    hl2.addColorStop(0.5, 'rgba(255,255,255,0.04)');
+    hl2.addColorStop(1,   'transparent');
+    ctx.fillStyle = hl2;
+    ctx.fillRect(0, 0, size, size);
+
+    // ── 9. Glass iridescence (веселковий перелив по краю) ───────
+    const ird = ctx.createRadialGradient(cx, cy, r * 0.88, cx, cy, r);
+    ird.addColorStop(0,    'transparent');
+    ird.addColorStop(0.5,  `rgba(0,212,255,${0.06 + Math.sin(t * 0.8) * 0.03})`);
+    ird.addColorStop(0.75, `rgba(244,63,143,${0.04 + Math.cos(t * 0.6) * 0.02})`);
+    ird.addColorStop(1,    `rgba(200,255,100,0.05)`);
+    ctx.fillStyle = ird;
     ctx.fillRect(0, 0, size, size);
 
     ctx.restore();
+  }
 
-    // Outer glow ring (outside clip)
-    const og = ctx.createRadialGradient(cx, cy, r * 0.85, cx, cy, r * 1.3);
-    og.addColorStop(0, `rgba(${color.r},${color.g},${color.b},0.18)`);
-    og.addColorStop(1, 'transparent');
-    ctx.fillStyle = og;
-    ctx.beginPath();
-    ctx.arc(cx, cy, r * 1.3, 0, Math.PI * 2);
-    ctx.fill();
+  function draw() {
+    const t = phase * 0.016;
+    ctx.clearRect(0, 0, size, size);
+
+    // Зовнішні ефекти (до кліпу)
+    drawOuterAura();
+    if (isMain) drawRays(t);
+
+    // Сам шар
+    drawOrb(t);
+
+    // Іскри навколо (після шара)
+    if (isMain) drawSparkles(t);
   }
 
   function tick() {
     phase++;
-    color.r = lerp(color.r, targetColor.r, 0.035);
-    color.g = lerp(color.g, targetColor.g, 0.035);
-    color.b = lerp(color.b, targetColor.b, 0.035);
+    color.r = lerp(color.r, targetColor.r, 0.030);
+    color.g = lerp(color.g, targetColor.g, 0.030);
+    color.b = lerp(color.b, targetColor.b, 0.030);
     draw();
     raf = requestAnimationFrame(tick);
   }
 
   function setColor(type) {
-    if (type === 'yes')        targetColor = { r: 0,   g: 220, b: 140 };
-    else if (type === 'no')    targetColor = { r: 220, g: 40,  b: 90  };
-    else if (type === 'maybe') targetColor = { r: 220, g: 175, b: 20  };
+    if (type === 'yes')        targetColor = { r: 0,   g: 210, b: 130 };
+    else if (type === 'no')    targetColor = { r: 210, g: 35,  b: 85  };
+    else if (type === 'maybe') targetColor = { r: 210, g: 165, b: 15  };
     else                       targetColor = { r: 139, g: 61,  b: 255 };
   }
 
@@ -210,8 +409,8 @@ function OrbCanvas(canvas, size = 240) {
   return { setColor, stop: () => cancelAnimationFrame(raf) };
 }
 
-const mainOrb   = OrbCanvas(document.getElementById('orb-canvas'), 240);
-const answerOrb = OrbCanvas(document.getElementById('answer-orb-canvas'), 110);
+const mainOrb   = OrbCanvas(document.getElementById('orb-canvas'), 280, true);
+const answerOrb = OrbCanvas(document.getElementById('answer-orb-canvas'), 120, false);
 
 // ─── Orbital Particles ──────────────────────────────────────────
 function buildOrbParticles() {
