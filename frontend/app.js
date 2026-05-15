@@ -1,18 +1,43 @@
 /* ─── Oracle Bot — Cosmic Edition ───────────────────────────── */
 
 const tg = window.Telegram?.WebApp;
+
+function applyTopInset() {
+  // Telegram надає safeAreaInset і contentSafeAreaInset в fullscreen
+  const tgTop = tg?.safeAreaInset?.top ?? tg?.contentSafeAreaInset?.top ?? 0;
+  // Також беремо CSS env() як fallback
+  const cssTop = parseInt(getComputedStyle(document.documentElement).getPropertyValue('--tg-viewport-stable-height') || '0');
+  const top = tgTop > 0 ? tgTop : 0;
+  document.documentElement.style.setProperty('--tg-safe-top', top + 'px');
+}
+
 if (tg) {
   tg.ready();
   tg.expand();
   tg.setHeaderColor('#03020f');
   tg.setBackgroundColor('#03020f');
-  // Full screen mode (Telegram Bot API 8.0+)
+
   if (tg.requestFullscreen) tg.requestFullscreen();
-  // Якщо вийшли з fullscreen — повертаємо
+
   tg.onEvent('fullscreenChanged', () => {
     if (!tg.isFullscreen && tg.requestFullscreen) tg.requestFullscreen();
+    applyTopInset();
   });
+
+  tg.onEvent('safeAreaChanged', applyTopInset);
+  tg.onEvent('contentSafeAreaChanged', applyTopInset);
+
+  applyTopInset();
 }
+
+// Fallback: якщо Telegram не дав інсет — беремо з CSS env()
+document.addEventListener('DOMContentLoaded', () => {
+  const current = getComputedStyle(document.documentElement).getPropertyValue('--tg-safe-top').trim();
+  if (!current || current === '0px') {
+    // iPhone notch ~44px, Dynamic Island ~59px — ставимо 52px як безпечний fallback
+    document.documentElement.style.setProperty('--tg-safe-top', '52px');
+  }
+});
 
 // ─── Cosmic Background ─────────────────────────────────────────
 function buildCosmicBg() {
