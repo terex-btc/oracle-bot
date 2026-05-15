@@ -2,16 +2,29 @@
 const fs   = require('fs');
 const path = require('path');
 
-const FILE       = path.join(__dirname, '../storage/users.json');
-const FREE_LIMIT = 2;
+const STORAGE_DIR = path.join(__dirname, '../storage');
+const FILE        = path.join(STORAGE_DIR, 'users.json');
+const FREE_LIMIT  = 2;
+
+// In-memory fallback if filesystem not writable (Railway ephemeral FS)
+let memStore = {};
+let useFile  = true;
+
+try {
+  if (!fs.existsSync(STORAGE_DIR)) fs.mkdirSync(STORAGE_DIR, { recursive: true });
+} catch { useFile = false; }
 
 function load() {
+  if (!useFile) return { ...memStore };
   try { return JSON.parse(fs.readFileSync(FILE, 'utf8')); }
   catch { return {}; }
 }
 
 function save(data) {
-  fs.writeFileSync(FILE, JSON.stringify(data, null, 2));
+  memStore = { ...data };
+  if (!useFile) return;
+  try { fs.writeFileSync(FILE, JSON.stringify(data, null, 2)); }
+  catch { useFile = false; }
 }
 
 function today() {
