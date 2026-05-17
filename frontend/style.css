@@ -525,51 +525,71 @@ textarea::placeholder { color: rgba(139, 127, 176, 0.4); }
   opacity: 0.6;
 }
 
-/* Answer verdict */
+/* Answer verdict — dramatic reveal */
 .answer-verdict-wrap {
   text-align: center;
-  margin-bottom: 18px;
-  padding: 16px;
-  border-radius: 16px;
-  background: rgba(0,0,0,0.2);
+  margin-bottom: 20px;
+  padding: 28px 20px 22px;
+  border-radius: 22px;
   position: relative;
   overflow: hidden;
+  border: 1.5px solid transparent;
+  transition: border-color 0.5s, box-shadow 0.5s, background 0.5s;
 }
 
-.answer-verdict-wrap::before {
+/* Sheen sweep across verdict box */
+.answer-verdict-wrap::after {
   content: '';
   position: absolute;
-  inset: 0;
-  border-radius: 16px;
-  opacity: 0.08;
-  transition: background 0.5s;
+  top: 0; left: -100%;
+  width: 60%;
+  height: 100%;
+  background: linear-gradient(105deg, transparent 40%, rgba(255,255,255,0.07) 50%, transparent 60%);
+  animation: sheen 2.5s 0.9s ease forwards;
+}
+@keyframes sheen {
+  from { left: -100%; }
+  to   { left: 160%; }
 }
 
-.verdict-yes  .answer-verdict-wrap::before { background: var(--yes-color); }
-.verdict-no   .answer-verdict-wrap::before { background: var(--no-color); }
-.verdict-maybe .answer-verdict-wrap::before { background: var(--maybe-color); }
+.verdict-yes .answer-verdict-wrap {
+  background: linear-gradient(160deg, rgba(0,245,160,0.14) 0%, rgba(0,200,100,0.05) 100%);
+  border-color: rgba(0,245,160,0.50);
+  box-shadow: 0 0 60px rgba(0,245,160,0.22), 0 0 120px rgba(0,245,160,0.08), inset 0 1px 0 rgba(0,245,160,0.25);
+}
+.verdict-no .answer-verdict-wrap {
+  background: linear-gradient(160deg, rgba(255,77,109,0.14) 0%, rgba(200,20,50,0.05) 100%);
+  border-color: rgba(255,77,109,0.50);
+  box-shadow: 0 0 60px rgba(255,77,109,0.22), 0 0 120px rgba(255,77,109,0.08), inset 0 1px 0 rgba(255,77,109,0.25);
+}
+.verdict-maybe .answer-verdict-wrap {
+  background: linear-gradient(160deg, rgba(245,200,66,0.14) 0%, rgba(200,150,20,0.05) 100%);
+  border-color: rgba(245,200,66,0.50);
+  box-shadow: 0 0 60px rgba(245,200,66,0.22), 0 0 120px rgba(245,200,66,0.08), inset 0 1px 0 rgba(245,200,66,0.25);
+}
 
 .answer-verdict {
   font-family: 'Cinzel', serif;
-  font-size: 30px;
+  font-size: 58px;
   font-weight: 900;
-  letter-spacing: 3px;
-  margin-bottom: 6px;
+  letter-spacing: 4px;
+  line-height: 1;
+  margin-bottom: 10px;
   transition: color 0.4s, text-shadow 0.4s;
 }
 
 .answer-title {
-  font-size: 10px;
+  font-size: 11px;
   font-weight: 600;
-  letter-spacing: 2.5px;
+  letter-spacing: 3px;
   text-transform: uppercase;
-  opacity: 0.6;
   font-family: 'Cinzel', serif;
+  opacity: 0.55;
 }
 
-.verdict-yes   .answer-verdict { color: var(--yes-color);   text-shadow: 0 0 30px rgba(0,245,160,0.6), 0 0 60px rgba(0,245,160,0.2); }
-.verdict-no    .answer-verdict { color: var(--no-color);    text-shadow: 0 0 30px rgba(255,77,109,0.6), 0 0 60px rgba(255,77,109,0.2); }
-.verdict-maybe .answer-verdict { color: var(--maybe-color); text-shadow: 0 0 30px rgba(245,200,66,0.6), 0 0 60px rgba(245,200,66,0.2); }
+.verdict-yes   .answer-verdict { color: var(--yes-color);   text-shadow: 0 0 40px rgba(0,245,160,0.9), 0 0 80px rgba(0,245,160,0.4), 0 0 160px rgba(0,245,160,0.15); }
+.verdict-no    .answer-verdict { color: var(--no-color);    text-shadow: 0 0 40px rgba(255,77,109,0.9), 0 0 80px rgba(255,77,109,0.4), 0 0 160px rgba(255,77,109,0.15); }
+.verdict-maybe .answer-verdict { color: var(--maybe-color); text-shadow: 0 0 40px rgba(245,200,66,0.9), 0 0 80px rgba(245,200,66,0.4), 0 0 160px rgba(245,200,66,0.15); }
 
 .answer-message {
   font-size: 13px;
@@ -877,13 +897,21 @@ textarea::placeholder { color: rgba(139, 127, 176, 0.4); }
   75%  { transform: translate(2px, -1px) rotate(0.5deg); }
 }
 
-/* ─── Pulse on answer reveal ─────────────────────────────────── */
+/* ─── Verdict reveal animation ───────────────────────────────── */
 @keyframes verdict-pop {
-  0%   { transform: scale(0.7); opacity: 0; }
-  60%  { transform: scale(1.06); }
-  100% { transform: scale(1); opacity: 1; }
+  0%   { transform: scale(0.6) translateY(10px); opacity: 0; filter: blur(8px); }
+  55%  { transform: scale(1.04) translateY(-2px); filter: blur(0); }
+  75%  { transform: scale(0.98); }
+  100% { transform: scale(1) translateY(0); opacity: 1; }
+}
+@keyframes verdict-glow-pulse {
+  0%, 100% { opacity: 1; }
+  50%       { opacity: 0.7; }
 }
 
 .answer-card.visible .answer-verdict-wrap {
-  animation: verdict-pop 0.5s cubic-bezier(0.34, 1.56, 0.64, 1) 0.4s both;
+  animation: verdict-pop 0.65s cubic-bezier(0.34, 1.4, 0.64, 1) 0.35s both;
+}
+.answer-card.visible .answer-verdict {
+  animation: verdict-glow-pulse 2.5s ease-in-out 1.2s infinite;
 }
