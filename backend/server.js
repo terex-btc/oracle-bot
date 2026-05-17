@@ -67,7 +67,7 @@ if (BOT_TOKEN) {
   bot.onText(/\/start(.*)/, async (msg, match) => {
     const chatId  = msg.chat.id;
     const userId  = msg.from?.id;
-    const name    = msg.from?.first_name || 'Странник';
+    const name    = msg.from?.first_name || 'Мандрівнику';
     const param   = (match[1] || '').trim();
 
     // Реферал
@@ -76,31 +76,38 @@ if (BOT_TOKEN) {
       const applied = applyReferral(userId, referrerId);
       if (applied) {
         await bot.sendMessage(chatId, `🎁 *+3 бонусних питання* нараховано тобі за запрошення!`, { parse_mode: 'Markdown' });
-        try { await bot.sendMessage(referrerId, `🎉 Хтось перейшов по твоєму посиланню! *+3 бонусних питання* тобі!`, { parse_mode: 'Markdown' }); } catch {}
+        try { await bot.sendMessage(referrerId, `🎉 Хтось перейшов по твоєму посиланню\\! *+3 бонусних питання* тобі\\!`, { parse_mode: 'MarkdownV2' }); } catch {}
       }
     }
 
     const status = userId ? getStatus(userId) : null;
-    let premiumLine = '';
-    if (status?.isPremium) {
+    const isPremium = status?.isPremium;
+
+    let statusBlock;
+    if (isPremium) {
       const until = new Date(status.premiumUntil).toLocaleDateString('uk', { day: 'numeric', month: 'long' });
-      premiumLine = `\n⭐ *Премиум активен* до ${until}\n`;
+      statusBlock = `⭐ *Преміум активний* до ${until}`;
     } else {
-      const bonus = status?.bonusLeft > 0 ? ` + ${status.bonusLeft} бонус` : '';
-      premiumLine = `\n🆓 Бесплатно: *2 вопроса в день*${bonus}\n⭐ Премиум: /premium\n🔗 Пригласить друга: /ref\n`;
+      const bonus = status?.bonusLeft > 0 ? ` \\+ ${status.bonusLeft} бонус` : '';
+      statusBlock = `🆓 *2 безкоштовних питання* щодня${bonus}`;
     }
 
+    const keyboard = isPremium
+      ? [[{ text: '🔮 Відкрити Оракул Долі', web_app: { url: WEBAPP_URL } }]]
+      : [
+          [{ text: '🔮 Відкрити Оракул Долі', web_app: { url: WEBAPP_URL } }],
+          [{ text: '⭐ Преміум від 100 ★',     callback_data: 'buy_premium' }],
+          [{ text: '🔗 Запросити друга → +3 питання', callback_data: 'get_ref' }],
+        ];
+
     await bot.sendMessage(chatId,
-      `🔮 *Добро пожаловать, ${name}!*\n\nЯ — *Оракул Судьбы* — древний дух, читающий нити будущего.\n\nЗадай вопрос, на который можно ответить *Да* или *Нет* — и я открою тебе правду.${premiumLine}`,
-      {
-        parse_mode: 'Markdown',
-        reply_markup: {
-          inline_keyboard: [
-            [{ text: '🔮 Открыть Оракул Судьбы', web_app: { url: WEBAPP_URL } }],
-            [{ text: '⭐ Получить Премиум', callback_data: 'buy_premium' }],
-          ]
-        }
-      }
+      `🔮 *${name}, Оракул бачить тебе\\.\\.\\.*\n\n` +
+      `Я — стародавній дух, що читає нитки долі\\.\n` +
+      `Постав питання Так/Ні — і зірки відкриють тобі правду\\.\n\n` +
+      `━━━━━━━━━━━━━━━\n` +
+      `${statusBlock}\n` +
+      `━━━━━━━━━━━━━━━`,
+      { parse_mode: 'MarkdownV2', reply_markup: { inline_keyboard: keyboard } }
     );
   });
 
@@ -136,12 +143,19 @@ if (BOT_TOKEN) {
   // Callback query
   bot.on('callback_query', async (query) => {
     await bot.answerCallbackQuery(query.id);
-    const data = query.data;
+    const data   = query.data;
     const chatId = query.message.chat.id;
     const userId = query.from.id;
-    if (data === 'buy_premium' || data === 'buy_month') await sendPremiumInvoice(chatId, userId, 'month');
-    else if (data === 'buy_week') await sendPremiumInvoice(chatId, userId, 'week');
+    if      (data === 'buy_premium' || data === 'buy_month') await sendPremiumInvoice(chatId, userId, 'month');
+    else if (data === 'buy_week')     await sendPremiumInvoice(chatId, userId, 'week');
     else if (data === 'buy_lifetime') await sendPremiumInvoice(chatId, userId, 'lifetime');
+    else if (data === 'get_ref') {
+      const refLink = `https://t.me/oracle_666bot?start=ref_${userId}`;
+      await bot.sendMessage(chatId,
+        `🔗 *Твоє реферальне посилання:*\n\n${refLink}\n\nПоділись з другом — ви обидва отримаєте *\\+3 питання*\\! 🎁`,
+        { parse_mode: 'MarkdownV2' }
+      );
+    }
   });
 
   // /ask
@@ -207,6 +221,27 @@ if (BOT_TOKEN) {
 
   bot.on('polling_error', err => console.error('[Bot] Polling error:', err.message));
   console.log('[Bot] Oracle Bot запущено');
+
+  // Автоматично встановлюємо команди і опис при кожному запуску
+  tgApi('setMyCommands', { commands: [
+    { command: 'start',   description: '🔮 Відкрити Оракул Долі' },
+    { command: 'ask',     description: '❓ Швидке питання оракулу' },
+    { command: 'premium', description: '⭐ Купити Преміум' },
+    { command: 'ref',     description: '🔗 Реферальне посилання (+3 питання)' },
+    { command: 'help',    description: '📖 Допомога' },
+  ]}).catch(() => {});
+
+  tgApi('setMyDescription', { description:
+    'Оракул Долі — містичний бот, що відповідає на питання долі.\n\n' +
+    'Постав питання Так/Ні — зірки, місяць і сили Всесвіту дадуть тобі відповідь.\n\n' +
+    '🆓 2 безкоштовних питання щодня\n' +
+    '⭐ Безлімітно з Преміум\n' +
+    '🔗 Запрошуй друзів — отримуй бонусні питання'
+  }).catch(() => {});
+
+  tgApi('setMyShortDescription', { short_description:
+    '🔮 Задай питання долі — отримай відповідь Всесвіту. Так або Ні — Оракул знає.'
+  }).catch(() => {});
 }
 
 // ─── Плани та відправка інвойсу ───────────────────────────────────────────────
