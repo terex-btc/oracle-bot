@@ -179,6 +179,29 @@ html, body {
   pointer-events: none;
 }
 
+.lang-btn {
+  position: absolute;
+  top: calc(var(--tg-safe-top, 0px) + 8px);
+  left: 16px;
+  background: linear-gradient(135deg, rgba(139,61,255,0.18), rgba(139,61,255,0.08));
+  border: 1px solid rgba(139,61,255,0.35);
+  color: var(--purple-l);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.5px;
+  padding: 7px 13px;
+  border-radius: 20px;
+  cursor: pointer;
+  transition: all 0.2s;
+  white-space: nowrap;
+  z-index: 10;
+}
+.lang-btn:hover, .lang-btn:active {
+  background: linear-gradient(135deg, rgba(139,61,255,0.30), rgba(139,61,255,0.15));
+  border-color: rgba(139,61,255,0.6);
+  transform: scale(1.04);
+}
+
 .oracle-badge {
   display: inline-flex;
   align-items: center;

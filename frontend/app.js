@@ -439,6 +439,170 @@ function buildOrbParticles() {
 }
 buildOrbParticles();
 
+// ─── i18n ──────────────────────────────────────────────────────
+const LANGS = {
+  ru: {
+    badge:            '🔮 ОРАКУЛ СУДЬБЫ',
+    subtitle:         'задай вопрос — получи ответ судьбы',
+    placeholder:      'Напиши свой вопрос здесь...',
+    askBtn:           'Спросить Оракул',
+    orbDefault:       'Сосредоточься на вопросе...',
+    orbFocus:         'Сначала задай вопрос...',
+    orbError:         '⚠️ Туман мешает Оракулу...',
+    orbPremium:       '⭐ Добро пожаловать в Премиум!',
+    thinking:         ['Оракул слышит тебя...', 'Нити судьбы сплетаются...', 'Ответ раскрывается...'],
+    counterPremium:   '⭐ ПРЕМИУМ — БЕЗЛИМИТ',
+    counterLeft:      n => `${n} из 2 вопросов сегодня`,
+    counterEmpty:     'Лимит исчерпан — вернись завтра',
+    premiumActive:    '⭐ Активен',
+    premiumDefault:   '⭐ Премиум',
+    answerLabel:      'Твой вопрос',
+    btnAgain:         '🌀 Новый вопрос',
+    btnShare:         '✨ Поделиться',
+    loadingText:      'Оракул читает судьбу...',
+    paywallTitle:     'Оракул молчит...',
+    paywallSub:       'Ты исчерпал лимит на сегодня',
+    catAll:           'Все',
+    catLove:          '💕 Любовь',
+    catCareer:        '💼 Карьера',
+    catMoney:         '💰 Деньги',
+    catHealth:        '🌿 Здоровье',
+    catPlaceholders:  { 'Любовь': '💕 Вопрос о любви...', 'Карьера': '💼 Вопрос о карьере...', 'Деньги': '💰 Вопрос о деньгах...', 'Здоровье': '🌿 Вопрос о здоровье...' },
+    shareText:        (q, v) => `🔮 Оракул Судьбы ответил!\n\n❓ ${q}\n\n${v}\n\n✨ Спроси и ты: @oracle_666bot`,
+    shareCopied:      '✅ Скопировано!',
+    refMsg:           link => `🔮 Попробуй Оракул Судьбы! Задай вопрос судьбе.\n${link}`,
+    refCopied:        '✅ Посилання скопійовано!',
+    refBtn:           '🔗 Запросити друга — +3 питання',
+    planWeek:         '7 дней',
+    planMonth:        '30 дней',
+    planLifetime:     'Навсегда',
+    planDescWeek:     'Безлим вопросов',
+    planDescMonth:    'Безлим вопросов',
+    planDescLifetime: 'Навечно ♾️',
+    planBtn:          'Выбрать',
+    featUnlimited:    '✓ Безлимитные вопросы',
+    featCategories:   '✓ Все категории',
+    featPriority:     '✓ Приоритет судьбы',
+    btnComeBack:      '🌙 Вернуться завтра (бесплатно)',
+    langBtn:          '🌐 UA',
+  },
+  ua: {
+    badge:            '🔮 ОРАКУЛ ДОЛІ',
+    subtitle:         'постав питання — отримай відповідь долі',
+    placeholder:      'Напиши своє питання тут...',
+    askBtn:           'Запитати Оракул',
+    orbDefault:       'Зосередься на питанні...',
+    orbFocus:         'Спочатку постав питання...',
+    orbError:         '⚠️ Туман заважає Оракулу...',
+    orbPremium:       '⭐ Ласкаво просимо до Преміум!',
+    thinking:         ['Оракул чує тебе...', 'Нитки долі сплітаються...', 'Відповідь розкривається...'],
+    counterPremium:   '⭐ ПРЕМІУМ — БЕЗЛІМІТ',
+    counterLeft:      n => `${n} з 2 питань сьогодні`,
+    counterEmpty:     'Ліміт вичерпано — повернись завтра',
+    premiumActive:    '⭐ Активний',
+    premiumDefault:   '⭐ Преміум',
+    answerLabel:      'Твоє питання',
+    btnAgain:         '🌀 Нове питання',
+    btnShare:         '✨ Поділитись',
+    loadingText:      'Оракул читає долю...',
+    paywallTitle:     'Оракул мовчить...',
+    paywallSub:       'Ти вичерпав ліміт на сьогодні',
+    catAll:           'Всі',
+    catLove:          '💕 Кохання',
+    catCareer:        "💼 Кар'єра",
+    catMoney:         '💰 Гроші',
+    catHealth:        "🌿 Здоров'я",
+    catPlaceholders:  { 'Любовь': '💕 Питання про кохання...', 'Карьера': "💼 Питання про кар'єру...", 'Деньги': '💰 Питання про гроші...', 'Здоровье': "🌿 Питання про здоров'я..." },
+    shareText:        (q, v) => `🔮 Оракул Долі відповів!\n\n❓ ${q}\n\n${v}\n\n✨ Запитай і ти: @oracle_666bot`,
+    shareCopied:      '✅ Скопійовано!',
+    refMsg:           link => `🔮 Спробуй Оракул Долі! Задай питання долі.\n${link}`,
+    refCopied:        '✅ Посилання скопійовано!',
+    refBtn:           '🔗 Запросити друга — +3 питання',
+    planWeek:         '7 днів',
+    planMonth:        '30 днів',
+    planLifetime:     'Назавжди',
+    planDescWeek:     'Безліміт питань',
+    planDescMonth:    'Безліміт питань',
+    planDescLifetime: 'Навічно ♾️',
+    planBtn:          'Вибрати',
+    featUnlimited:    '✓ Безлімітні питання',
+    featCategories:   '✓ Всі категорії',
+    featPriority:     '✓ Пріоритет долі',
+    btnComeBack:      '🌙 Повернутись завтра (безкоштовно)',
+    langBtn:          '🌐 RU',
+  },
+};
+let currentLang = localStorage.getItem('oracle_lang') || 'ru';
+
+function applyLang() {
+  const L = LANGS[currentLang];
+
+  const langBtn = document.getElementById('lang-btn');
+  if (langBtn) langBtn.textContent = L.langBtn;
+
+  const badge = document.querySelector('.oracle-badge');
+  if (badge) badge.textContent = L.badge;
+  const subtitle = document.querySelector('.oracle-subtitle');
+  if (subtitle) subtitle.textContent = L.subtitle;
+
+  const qi = document.getElementById('question-input');
+  if (qi) qi.placeholder = selectedCategory ? (L.catPlaceholders[selectedCategory] || L.placeholder) : L.placeholder;
+
+  const at = document.querySelector('.ask-text');
+  if (at) at.textContent = L.askBtn;
+
+  const os = document.getElementById('orb-status');
+  if (os) {
+    const isDefault = Object.values(LANGS).some(l => l.orbDefault === os.textContent);
+    if (isDefault) os.textContent = L.orbDefault;
+  }
+
+  const aql = document.querySelector('.answer-question-label');
+  if (aql) aql.textContent = L.answerLabel;
+  const ba = document.getElementById('btn-again');
+  if (ba) ba.textContent = L.btnAgain;
+  const bs = document.getElementById('btn-share');
+  if (bs) bs.textContent = L.btnShare;
+
+  const lt = document.querySelector('.loading-text');
+  if (lt) lt.textContent = L.loadingText;
+
+  const pt = document.querySelector('.paywall-title');
+  if (pt) pt.textContent = L.paywallTitle;
+  const ps = document.querySelector('.paywall-sub');
+  if (ps) ps.textContent = L.paywallSub;
+
+  const chipTexts = [L.catAll, L.catLove, L.catCareer, L.catMoney, L.catHealth];
+  document.querySelectorAll('.cat-chip').forEach((chip, i) => {
+    if (chipTexts[i] !== undefined) chip.textContent = chipTexts[i];
+  });
+
+  [['week', L.planWeek, L.planDescWeek], ['month', L.planMonth, L.planDescMonth], ['lifetime', L.planLifetime, L.planDescLifetime]].forEach(([id, name, desc]) => {
+    const nameEl = document.querySelector(`#plan-${id} .plan-name`);
+    const descEl = document.querySelector(`#plan-${id} .plan-desc`);
+    const btnEl  = document.querySelector(`#plan-${id} .plan-btn`);
+    if (nameEl) nameEl.textContent = name;
+    if (descEl) descEl.textContent = desc;
+    if (btnEl)  btnEl.textContent  = L.planBtn;
+  });
+
+  const feats = document.querySelectorAll('.paywall-features span');
+  [L.featUnlimited, L.featCategories, L.featPriority].forEach((t, i) => { if (feats[i]) feats[i].textContent = t; });
+
+  const bcb = document.getElementById('btn-come-back');
+  if (bcb) bcb.textContent = L.btnComeBack;
+  const br = document.getElementById('btn-ref');
+  if (br) br.textContent = L.refBtn;
+
+  updateCounter();
+}
+
+function toggleLang() {
+  currentLang = currentLang === 'ru' ? 'ua' : 'ru';
+  localStorage.setItem('oracle_lang', currentLang);
+  applyLang();
+}
+
 // ─── Category chips ────────────────────────────────────────────
 let selectedCategory = '';
 document.querySelectorAll('.cat-chip').forEach(chip => {
@@ -446,11 +610,10 @@ document.querySelectorAll('.cat-chip').forEach(chip => {
     document.querySelectorAll('.cat-chip').forEach(c => c.classList.remove('active'));
     chip.classList.add('active');
     selectedCategory = chip.dataset.cat || '';
-    const emoji = chip.dataset.emoji || '';
-    const placeholder = selectedCategory
-      ? `${emoji} Питання про ${selectedCategory.toLowerCase()}...`
-      : 'Напиши свой вопрос здесь...';
-    document.getElementById('question-input').placeholder = placeholder;
+    const L = LANGS[currentLang];
+    document.getElementById('question-input').placeholder = selectedCategory
+      ? (L.catPlaceholders[selectedCategory] || L.placeholder)
+      : L.placeholder;
   });
 });
 
@@ -471,17 +634,16 @@ function updateCounter() {
   const el  = document.getElementById('question-counter');
   const btn = document.getElementById('premium-btn');
   if (!el) return;
+  const L = LANGS[currentLang];
   if (userStatus.isPremium) {
-    el.textContent = '⭐ ПРЕМИУМ — БЕЗЛИМИТ';
+    el.textContent = L.counterPremium;
     el.className = 'question-counter premium';
-    if (btn) { btn.textContent = '⭐ Активен'; btn.classList.add('is-premium'); }
+    if (btn) { btn.textContent = L.premiumActive; btn.classList.add('is-premium'); }
   } else if (userStatus.remaining !== null) {
     const left = userStatus.remaining ?? 2;
-    el.textContent = left > 0
-      ? `${left} из 2 вопросов сегодня`
-      : 'Лимит исчерпан — вернись завтра';
+    el.textContent = left > 0 ? L.counterLeft(left) : L.counterEmpty;
     el.className = `question-counter${left <= 1 ? ' low' : ''}`;
-    if (btn) { btn.textContent = '⭐ Премиум'; btn.classList.remove('is-premium'); }
+    if (btn) { btn.textContent = L.premiumDefault; btn.classList.remove('is-premium'); }
   }
 }
 
@@ -505,18 +667,12 @@ const orbWrap   = document.getElementById('orb-wrapper');
 input.addEventListener('input', () => { charCount.textContent = input.value.length; });
 
 // ─── Ask ────────────────────────────────────────────────────────
-const thinkingPhrases = [
-  'Оракул слышит тебя...',
-  'Нити судьбы сплетаются...',
-  'Ответ раскрывается...',
-];
-
 async function askOracle() {
   const question = input.value.trim();
   if (!question) {
     input.focus();
-    orbStatus.textContent = 'Сначала задай вопрос...';
-    setTimeout(() => { orbStatus.textContent = 'Сосредоточься на вопросе...'; }, 2000);
+    orbStatus.textContent = LANGS[currentLang].orbFocus;
+    setTimeout(() => { orbStatus.textContent = LANGS[currentLang].orbDefault; }, 2000);
     return;
   }
 
@@ -532,8 +688,9 @@ async function askOracle() {
   });
 
   // Драматична анімація "оракул думає"
-  for (let i = 0; i < thinkingPhrases.length; i++) {
-    orbStatus.textContent = thinkingPhrases[i];
+  const phrases = LANGS[currentLang].thinking;
+  for (let i = 0; i < phrases.length; i++) {
+    orbStatus.textContent = phrases[i];
     await new Promise(r => setTimeout(r, 900));
   }
 
@@ -545,8 +702,8 @@ async function askOracle() {
     if (data.status) { userStatus = data.status; updateCounter(); }
     showAnswer(question, data.answer);
   } catch {
-    orbStatus.textContent = '⚠️ Туман мешает Оракулу...';
-    setTimeout(() => { orbStatus.textContent = 'Сосредоточься на вопросе...'; }, 3000);
+    orbStatus.textContent = LANGS[currentLang].orbError;
+    setTimeout(() => { orbStatus.textContent = LANGS[currentLang].orbDefault; }, 3000);
   } finally {
     askBtn.disabled = false;
     orbWrap.classList.remove('asking');
@@ -589,8 +746,8 @@ async function buyPremiumFlow(btn, plan = 'month') {
         if (status === 'paid') {
           await fetchStatus();
           showScreen('screen-home');
-          orbStatus.textContent = '⭐ Добро пожаловать в Премиум!';
-          setTimeout(() => { orbStatus.textContent = 'Сосредоточься на вопросе...'; }, 3000);
+          orbStatus.textContent = LANGS[currentLang].orbPremium;
+          setTimeout(() => { orbStatus.textContent = LANGS[currentLang].orbDefault; }, 3000);
         }
       });
     } else {
@@ -619,15 +776,16 @@ document.querySelectorAll('.plan-btn').forEach(btn => {
 // Referral button
 document.getElementById('btn-ref')?.addEventListener('click', () => {
   const refLink = `https://t.me/oracle_666bot?start=ref_${userId}`;
+  const L = LANGS[currentLang];
   if (tg?.switchInlineQuery) {
-    tg.switchInlineQuery(`🔮 Спробуй Оракул Судьбы! ${refLink}`);
+    tg.switchInlineQuery(L.refMsg(refLink));
   } else if (navigator.share) {
-    navigator.share({ text: `🔮 Спробуй Оракул Судьбы! Задай питання долі.\n${refLink}` }).catch(() => {});
+    navigator.share({ text: L.refMsg(refLink) }).catch(() => {});
   } else {
     navigator.clipboard?.writeText(refLink).then(() => {
       const btn = document.getElementById('btn-ref');
-      btn.textContent = '✅ Посилання скопійовано!';
-      setTimeout(() => { btn.textContent = '🔗 Запросити друга — +3 питання'; }, 2500);
+      btn.textContent = L.refCopied;
+      setTimeout(() => { btn.textContent = L.refBtn; }, 2500);
     });
   }
 });
@@ -637,10 +795,11 @@ fetchStatus();
 
 // ─── Show Answer ────────────────────────────────────────────────
 function showAnswer(question, answer) {
+  const ua = currentLang === 'ua';
   document.getElementById('answer-question').textContent = question;
-  document.getElementById('answer-verdict').textContent  = answer.verdict;
-  document.getElementById('answer-title').textContent    = answer.title;
-  document.getElementById('answer-message').textContent  = answer.message;
+  document.getElementById('answer-verdict').textContent  = ua ? (answer.verdict_ua || answer.verdict) : answer.verdict;
+  document.getElementById('answer-title').textContent    = ua ? (answer.title_ua   || answer.title)   : answer.title;
+  document.getElementById('answer-message').textContent  = ua ? (answer.message_ua || answer.message) : answer.message;
 
   const wrap = document.getElementById('answer-verdict-wrap');
   wrap.className = `answer-verdict-wrap verdict-${answer.color}`;
@@ -698,7 +857,7 @@ document.getElementById('btn-again').addEventListener('click', async () => {
 
   input.value = '';
   charCount.textContent = '0';
-  orbStatus.textContent = 'Сосредоточься на вопросе...';
+  orbStatus.textContent = LANGS[currentLang].orbDefault;
 
   const orbGlow = document.getElementById('orb-glow');
   if (orbGlow) orbGlow.style.background = '';
@@ -707,11 +866,16 @@ document.getElementById('btn-again').addEventListener('click', async () => {
   setTimeout(() => input.focus(), 500);
 });
 
+// ─── Language switch ────────────────────────────────────────────
+document.getElementById('lang-btn')?.addEventListener('click', toggleLang);
+applyLang();
+
 // ─── Share ─────────────────────────────────────────────────────
 document.getElementById('btn-share').addEventListener('click', () => {
   const verdict  = document.getElementById('answer-verdict').textContent;
   const question = document.getElementById('answer-question').textContent;
-  const text = `🔮 Оракул Судьбы ответил!\n\n❓ ${question}\n\n${verdict}\n\n✨ Спроси и ты: @oracle_666bot`;
+  const L = LANGS[currentLang];
+  const text = L.shareText(question, verdict);
 
   if (tg?.switchInlineQuery) {
     tg.switchInlineQuery(text);
@@ -721,7 +885,7 @@ document.getElementById('btn-share').addEventListener('click', () => {
     navigator.clipboard?.writeText(text).then(() => {
       const btn = document.getElementById('btn-share');
       const orig = btn.textContent;
-      btn.textContent = '✅ Скопировано!';
+      btn.textContent = L.shareCopied;
       setTimeout(() => { btn.textContent = orig; }, 2000);
     });
   }
