@@ -2,21 +2,20 @@
 const fs   = require('fs');
 const path = require('path');
 
-const STORAGE_DIR  = path.join(__dirname, '../storage');
-const FILE         = path.join(STORAGE_DIR, 'users.json');
-const Q_FILE       = path.join(STORAGE_DIR, 'questions.json');
-const FREE_LIMIT   = 2;
-const Q_MAX        = 1000;
+const STORAGE_DIR = path.join(__dirname, '../storage');
+const FILE        = path.join(STORAGE_DIR, 'users.json');
+const Q_FILE      = path.join(STORAGE_DIR, 'questions.json');
+const FREE_LIMIT  = 2;
+const Q_MAX       = 1000;
 
-let memStore   = {};
+let memStore    = {};
 let questionLog = [];
-let useFile    = true;
+let useFile     = true;
 
 try {
   if (!fs.existsSync(STORAGE_DIR)) fs.mkdirSync(STORAGE_DIR, { recursive: true });
 } catch { useFile = false; }
 
-// load questions log on startup
 try {
   if (useFile && fs.existsSync(Q_FILE)) {
     questionLog = JSON.parse(fs.readFileSync(Q_FILE, 'utf8'));
@@ -50,13 +49,14 @@ function hydrate(userId) {
   const users = load();
   const id    = String(userId);
   if (!users[id]) {
-    users[id] = { dailyCount: 0, lastReset: today(), premiumUntil: null, totalAsked: 0, lastSeen: null };
+    users[id] = { dailyCount: 0, lastReset: today(), premiumUntil: null, totalAsked: 0, lastSeen: null, freeBonus: 0, referredBy: null };
   }
   const u = users[id];
   if (u.lastReset !== today()) {
     u.dailyCount = 0;
     u.lastReset  = today();
   }
+  if (!u.freeBonus) u.freeBonus = 0;
   users[id] = u;
   save(users);
   return { users, u, id };
@@ -68,16 +68,24 @@ function getStatus(userId) {
   if (isPremium) {
     return { canAsk: true, remaining: null, isPremium: true, premiumUntil: u.premiumUntil, dailyCount: u.dailyCount };
   }
-  const remaining = Math.max(0, FREE_LIMIT - u.dailyCount);
-  return { canAsk: remaining > 0, remaining, isPremium: false, premiumUntil: null, dailyCount: u.dailyCount, limit: FREE_LIMIT };
+  const dailyLeft  = Math.max(0, FREE_LIMIT - u.dailyCount);
+  const bonusLeft  = u.freeBonus || 0;
+  const remaining  = dailyLeft + bonusLeft;
+  return { canAsk: remaining > 0, remaining, dailyLeft, bonusLeft, isPremium: false, premiumUntil: null, dailyCount: u.dailyCount, limit: FREE_LIMIT };
 }
 
 function increment(userId) {
   const { users, u, id } = hydrate(userId);
-  u.dailyCount = (u.dailyCount || 0) + 1;
+  if (u.dailyCount < FREE_LIMIT) {
+    u.dailyCount = (u.dailyCount || 0) + 1;
+  } else if ((u.freeBonus || 0) > 0) {
+    u.freeBonus--;
+  } else {
+    u.dailyCount = (u.dailyCount || 0) + 1;
+  }
   u.totalAsked = (u.totalAsked || 0) + 1;
   u.lastSeen   = Date.now();
-  users[id] = u;
+  users[id]    = u;
   save(users);
 }
 
@@ -87,27 +95,53 @@ function activatePremium(userId, days = 30) {
   const base = u.premiumUntil && new Date(u.premiumUntil) > now ? new Date(u.premiumUntil) : now;
   base.setDate(base.getDate() + days);
   u.premiumUntil = base.toISOString();
+  u.lastSeen     = Date.now();
   users[id] = u;
   save(users);
   return u.premiumUntil;
 }
 
-function logQuestion(userId, question, answer) {
+function addBonus(userId, amount) {
+  try {
+    const { users, u, id } = hydrate(userId);
+    u.freeBonus = (u.freeBonus || 0) + amount;
+    users[id] = u;
+    save(users);
+    return u.freeBonus;
+  } catch { return 0; }
+}
+
+function applyReferral(newUserId, referrerId) {
+  try {
+    const { users, u: newUser, id: newId } = hydrate(newUserId);
+    if (newUser.referredBy) return false; // вже використав реферал
+    if (String(newUserId) === String(referrerId)) return false; // сам себе
+    newUser.referredBy = String(referrerId);
+    users[newId] = newUser;
+    save(users);
+    addBonus(newUserId, 3);
+    addBonus(referrerId, 3);
+    return true;
+  } catch { return false; }
+}
+
+function logQuestion(userId, question, answer, category) {
   questionLog.unshift({
-    userId: userId ? String(userId) : 'guest',
+    userId:   userId ? String(userId) : 'guest',
     question,
-    color:  answer.color,
-    verdict: answer.verdict,
-    ts: Date.now(),
+    category: category || null,
+    color:    answer.color,
+    verdict:  answer.verdict,
+    ts:       Date.now(),
   });
   if (questionLog.length > Q_MAX) questionLog.length = Q_MAX;
   saveQuestions();
 }
 
 function getStats() {
-  const users   = load();
+  const users    = load();
   const todayStr = today();
-  const now     = new Date();
+  const now      = new Date();
   let totalUsers = 0, premiumUsers = 0, questionsToday = 0, totalQuestions = 0;
 
   for (const u of Object.values(users)) {
@@ -117,7 +151,7 @@ function getStats() {
     if (u.lastReset === todayStr) questionsToday += (u.dailyCount || 0);
   }
 
-  const hourAgo = Date.now() - 3600_000;
+  const hourAgo = Date.now() - 3_600_000;
   const questionsLastHour = questionLog.filter(q => q.ts > hourAgo).length;
 
   return { totalUsers, premiumUsers, questionsToday, questionsLastHour, totalQuestions, loggedQuestions: questionLog.length };
@@ -130,6 +164,7 @@ function getUsers() {
     userId:      id,
     totalAsked:  u.totalAsked  || 0,
     dailyCount:  u.dailyCount  || 0,
+    freeBonus:   u.freeBonus   || 0,
     isPremium:   !!(u.premiumUntil && new Date(u.premiumUntil) > now),
     premiumUntil: u.premiumUntil || null,
     lastSeen:    u.lastSeen    || null,
@@ -140,4 +175,4 @@ function getQuestions(limit = 200) {
   return questionLog.slice(0, limit);
 }
 
-module.exports = { getStatus, increment, activatePremium, logQuestion, getStats, getUsers, getQuestions };
+module.exports = { getStatus, increment, activatePremium, addBonus, applyReferral, logQuestion, getStats, getUsers, getQuestions };

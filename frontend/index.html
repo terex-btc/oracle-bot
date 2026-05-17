@@ -35,6 +35,15 @@
       </div>
 
       <div class="question-section">
+        <!-- Категорії (опціонально) -->
+        <div class="categories" id="categories">
+          <button class="cat-chip" data-cat="" data-emoji="">Всі</button>
+          <button class="cat-chip" data-cat="Любовь" data-emoji="💕">💕 Любовь</button>
+          <button class="cat-chip" data-cat="Карьера" data-emoji="💼">💼 Карьера</button>
+          <button class="cat-chip" data-cat="Деньги" data-emoji="💰">💰 Деньги</button>
+          <button class="cat-chip" data-cat="Здоровье" data-emoji="🌿">🌿 Здоровье</button>
+        </div>
+
         <div class="question-box">
           <textarea
             id="question-input"
@@ -90,38 +99,47 @@
       <div class="stars-bg"></div>
 
       <div class="paywall-wrap">
-        <div class="paywall-orb">⭐</div>
+        <div class="paywall-orb">🔮</div>
         <h2 class="paywall-title">Оракул молчит...</h2>
-        <p class="paywall-sub">Ты использовал <strong>2 бесплатных вопроса</strong> сегодня</p>
+        <p class="paywall-sub">Ты исчерпал лимит на сегодня</p>
 
-        <div class="paywall-card">
-          <div class="paywall-plan-free">
-            <span class="plan-label">🆓 Бесплатно</span>
-            <ul>
-              <li>✓ 2 вопроса в день</li>
-              <li>✗ Безлимитные вопросы</li>
-              <li>✗ Приоритет судьбы</li>
-            </ul>
+        <!-- 3 плани -->
+        <div class="plans-grid">
+          <div class="plan-card" id="plan-week" data-plan="week">
+            <div class="plan-name">7 дней</div>
+            <div class="plan-price-big">100 <span>★</span></div>
+            <div class="plan-desc">Безлим питань</div>
+            <button class="plan-btn" data-plan="week">Вибрати</button>
           </div>
-          <div class="paywall-plan-premium">
-            <div class="plan-badge">ЛУЧШИЙ ВЫБОР</div>
-            <span class="plan-label">⭐ Премиум</span>
-            <div class="plan-price">300 <span class="stars-icon">★</span><span class="plan-period">/месяц</span></div>
-            <ul>
-              <li>✓ Безлимитные вопросы</li>
-              <li>✓ Приоритет судьбы</li>
-              <li>✓ Особая аура Оракула</li>
-            </ul>
+
+          <div class="plan-card best" id="plan-month" data-plan="month">
+            <div class="plan-best-badge">ХІТ</div>
+            <div class="plan-name">30 днів</div>
+            <div class="plan-price-big">300 <span>★</span></div>
+            <div class="plan-desc">Безлім питань</div>
+            <button class="plan-btn" data-plan="month">Вибрати</button>
+          </div>
+
+          <div class="plan-card" id="plan-lifetime" data-plan="lifetime">
+            <div class="plan-name">Назавжди</div>
+            <div class="plan-price-big">2500 <span>★</span></div>
+            <div class="plan-desc">Навічно ♾️</div>
+            <button class="plan-btn" data-plan="lifetime">Вибрати</button>
           </div>
         </div>
 
-        <button class="btn-buy-premium" id="btn-buy-premium">
-          <span class="buy-icon">★</span>
-          <span>Получить Премиум — 300 Stars</span>
-        </button>
+        <div class="paywall-features">
+          <span>✓ Безлімітні питання</span>
+          <span>✓ Всі категорії</span>
+          <span>✓ Пріоритет долі</span>
+        </div>
 
         <button class="btn-come-back" id="btn-come-back">
-          🌙 Вернуться завтра (бесплатно)
+          🌙 Повернутись завтра (безкоштовно)
+        </button>
+
+        <button class="btn-ref" id="btn-ref">
+          🔗 Запросити друга — +3 питання
         </button>
       </div>
     </div>

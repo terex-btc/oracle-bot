@@ -439,6 +439,21 @@ function buildOrbParticles() {
 }
 buildOrbParticles();
 
+// ─── Category chips ────────────────────────────────────────────
+let selectedCategory = '';
+document.querySelectorAll('.cat-chip').forEach(chip => {
+  chip.addEventListener('click', () => {
+    document.querySelectorAll('.cat-chip').forEach(c => c.classList.remove('active'));
+    chip.classList.add('active');
+    selectedCategory = chip.dataset.cat || '';
+    const emoji = chip.dataset.emoji || '';
+    const placeholder = selectedCategory
+      ? `${emoji} Питання про ${selectedCategory.toLowerCase()}...`
+      : 'Напиши свой вопрос здесь...';
+    document.getElementById('question-input').placeholder = placeholder;
+  });
+});
+
 // ─── User State ────────────────────────────────────────────────
 const userId = tg?.initDataUnsafe?.user?.id ?? 'guest';
 let userStatus = { canAsk: true, remaining: 2, isPremium: false };
@@ -490,6 +505,12 @@ const orbWrap   = document.getElementById('orb-wrapper');
 input.addEventListener('input', () => { charCount.textContent = input.value.length; });
 
 // ─── Ask ────────────────────────────────────────────────────────
+const thinkingPhrases = [
+  'Оракул слышит тебя...',
+  'Нити судьбы сплетаются...',
+  'Ответ раскрывается...',
+];
+
 async function askOracle() {
   const question = input.value.trim();
   if (!question) {
@@ -502,20 +523,23 @@ async function askOracle() {
   askBtn.disabled = true;
   orbWrap.classList.add('asking');
   showLoading(true);
-  orbStatus.textContent = 'Оракул читает нити судьбы...';
+
+  // Запускаємо API паралельно з анімацією
+  const apiPromise = fetch('/api/ask', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ question, userId, category: selectedCategory || undefined })
+  });
+
+  // Драматична анімація "оракул думає"
+  for (let i = 0; i < thinkingPhrases.length; i++) {
+    orbStatus.textContent = thinkingPhrases[i];
+    await new Promise(r => setTimeout(r, 900));
+  }
 
   try {
-    const res = await fetch('/api/ask', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ question, userId })
-    });
-
-    if (res.status === 403) {
-      // Ліміт вичерпано
-      showPaywall();
-      return;
-    }
+    const res = await apiPromise;
+    if (res.status === 403) { showPaywall(); return; }
     if (!res.ok) throw new Error();
     const data = await res.json();
     if (data.status) { userStatus = data.status; updateCounter(); }
@@ -546,14 +570,18 @@ input.addEventListener('keydown', e => {
   if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); askOracle(); }
 });
 
-// ─── Premium button (header) ─────────────────────────────────────
-async function buyPremiumFlow(btn) {
+// ─── Premium purchase flow ────────────────────────────────────────
+async function buyPremiumFlow(btn, plan = 'month') {
   if (!btn || btn.disabled) return;
   btn.disabled = true;
   const orig = btn.textContent;
   btn.textContent = '⏳...';
   try {
-    const r = await fetch(`/api/user/${userId}/invoice`, { method: 'POST' });
+    const r = await fetch(`/api/user/${userId}/invoice`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ plan }),
+    });
     const data = await r.json();
     if (!data.url) throw new Error(data.error || 'Ошибка');
     if (tg?.openInvoice) {
@@ -576,13 +604,32 @@ async function buyPremiumFlow(btn) {
   }
 }
 
+// Header premium button
 document.getElementById('premium-btn')?.addEventListener('click', function() {
-  buyPremiumFlow(this);
+  buyPremiumFlow(this, 'month');
 });
 
-// Також paywall кнопка використовує той самий flow
-document.getElementById('btn-buy-premium').addEventListener('click', function() {
-  buyPremiumFlow(this);
+// Paywall plan buttons
+document.querySelectorAll('.plan-btn').forEach(btn => {
+  btn.addEventListener('click', function() {
+    buyPremiumFlow(this, this.dataset.plan || 'month');
+  });
+});
+
+// Referral button
+document.getElementById('btn-ref')?.addEventListener('click', () => {
+  const refLink = `https://t.me/oracle_666bot?start=ref_${userId}`;
+  if (tg?.switchInlineQuery) {
+    tg.switchInlineQuery(`🔮 Спробуй Оракул Судьбы! ${refLink}`);
+  } else if (navigator.share) {
+    navigator.share({ text: `🔮 Спробуй Оракул Судьбы! Задай питання долі.\n${refLink}` }).catch(() => {});
+  } else {
+    navigator.clipboard?.writeText(refLink).then(() => {
+      const btn = document.getElementById('btn-ref');
+      btn.textContent = '✅ Посилання скопійовано!';
+      setTimeout(() => { btn.textContent = '🔗 Запросити друга — +3 питання'; }, 2500);
+    });
+  }
 });
 
 // Завантажуємо статус при старті
