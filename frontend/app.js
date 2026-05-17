@@ -453,17 +453,20 @@ async function fetchStatus() {
 }
 
 function updateCounter() {
-  const el = document.getElementById('question-counter');
+  const el  = document.getElementById('question-counter');
+  const btn = document.getElementById('premium-btn');
   if (!el) return;
   if (userStatus.isPremium) {
     el.textContent = '⭐ ПРЕМИУМ — БЕЗЛИМИТ';
     el.className = 'question-counter premium';
+    if (btn) { btn.textContent = '⭐ Активен'; btn.classList.add('is-premium'); }
   } else if (userStatus.remaining !== null) {
     const left = userStatus.remaining ?? 2;
     el.textContent = left > 0
       ? `${left} из 2 вопросов сегодня`
       : 'Лимит исчерпан — вернись завтра';
     el.className = `question-counter${left <= 1 ? ' low' : ''}`;
+    if (btn) { btn.textContent = '⭐ Премиум'; btn.classList.remove('is-premium'); }
   }
 }
 
@@ -537,45 +540,49 @@ document.getElementById('btn-come-back').addEventListener('click', () => {
   showScreen('screen-home');
 });
 
-document.getElementById('btn-buy-premium').addEventListener('click', async () => {
-  const btn = document.getElementById('btn-buy-premium');
-  btn.disabled = true;
-  btn.textContent = 'Загружаем...';
-
-  try {
-    const r = await fetch(`/api/user/${userId}/invoice`, { method: 'POST' });
-    const data = await r.json();
-    if (!data.url) throw new Error(data.error || 'Ошибка');
-
-    if (tg?.openInvoice) {
-      tg.openInvoice(data.url, (status) => {
-        if (status === 'paid') {
-          // Оновлюємо статус після оплати
-          setTimeout(async () => {
-            await fetchStatus();
-            if (userStatus.isPremium) {
-              showScreen('screen-home');
-              orbStatus.textContent = '⭐ Добро пожаловать в Премиум!';
-              setTimeout(() => { orbStatus.textContent = 'Сосредоточься на вопросе...'; }, 3000);
-            }
-          }, 1500);
-        }
-      });
-    } else {
-      // Fallback — відкрити в браузері
-      window.open(data.url, '_blank');
-    }
-  } catch (e) {
-    alert('Ошибка создания платежа: ' + e.message);
-  } finally {
-    btn.disabled = false;
-    btn.innerHTML = '<span class="buy-icon">★</span><span>Получить Премиум — 300 Stars</span>';
-  }
-});
 
 askBtn.addEventListener('click', askOracle);
 input.addEventListener('keydown', e => {
   if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); askOracle(); }
+});
+
+// ─── Premium button (header) ─────────────────────────────────────
+async function buyPremiumFlow(btn) {
+  if (!btn || btn.disabled) return;
+  btn.disabled = true;
+  const orig = btn.textContent;
+  btn.textContent = '⏳...';
+  try {
+    const r = await fetch(`/api/user/${userId}/invoice`, { method: 'POST' });
+    const data = await r.json();
+    if (!data.url) throw new Error(data.error || 'Ошибка');
+    if (tg?.openInvoice) {
+      tg.openInvoice(data.url, async (status) => {
+        if (status === 'paid') {
+          await fetchStatus();
+          showScreen('screen-home');
+          orbStatus.textContent = '⭐ Добро пожаловать в Премиум!';
+          setTimeout(() => { orbStatus.textContent = 'Сосредоточься на вопросе...'; }, 3000);
+        }
+      });
+    } else {
+      window.open(data.url, '_blank');
+    }
+  } catch (e) {
+    alert('Ошибка: ' + e.message);
+  } finally {
+    btn.disabled = false;
+    btn.textContent = orig;
+  }
+}
+
+document.getElementById('premium-btn')?.addEventListener('click', function() {
+  buyPremiumFlow(this);
+});
+
+// Також paywall кнопка використовує той самий flow
+document.getElementById('btn-buy-premium').addEventListener('click', function() {
+  buyPremiumFlow(this);
 });
 
 // Завантажуємо статус при старті
