@@ -1,0 +1,470 @@
+<!DOCTYPE html>
+<html lang="uk">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Oracle Admin</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg:      #07060f;
+      --surface: #110f1e;
+      --border:  #2a2445;
+      --purple:  #8b3dff;
+      --gold:    #f5c842;
+      --green:   #22c55e;
+      --red:     #ef4444;
+      --yellow:  #eab308;
+      --text:    #e2ddf5;
+      --muted:   #7b6fa0;
+    }
+
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      font-size: 14px;
+      min-height: 100vh;
+    }
+
+    /* ── Login ── */
+    #login {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      min-height: 100vh;
+      gap: 16px;
+    }
+    #login h1 { font-size: 24px; }
+    #login .logo { font-size: 48px; margin-bottom: 8px; }
+    #login input {
+      padding: 12px 20px;
+      border-radius: 12px;
+      border: 1px solid var(--border);
+      background: var(--surface);
+      color: var(--text);
+      font-size: 15px;
+      width: 280px;
+      outline: none;
+    }
+    #login input:focus { border-color: var(--purple); }
+    #login button {
+      padding: 12px 40px;
+      border-radius: 12px;
+      border: none;
+      background: var(--purple);
+      color: #fff;
+      font-size: 15px;
+      font-weight: 600;
+      cursor: pointer;
+      width: 280px;
+    }
+    #login button:hover { opacity: .85; }
+    #login .err { color: var(--red); font-size: 13px; }
+
+    /* ── Dashboard ── */
+    #dashboard { display: none; }
+
+    header {
+      background: var(--surface);
+      border-bottom: 1px solid var(--border);
+      padding: 14px 24px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      position: sticky;
+      top: 0;
+      z-index: 10;
+    }
+    header h1 { font-size: 17px; display: flex; align-items: center; gap: 8px; }
+    .logout-btn {
+      background: transparent;
+      border: 1px solid var(--border);
+      color: var(--muted);
+      padding: 6px 14px;
+      border-radius: 8px;
+      cursor: pointer;
+      font-size: 13px;
+    }
+    .logout-btn:hover { border-color: var(--red); color: var(--red); }
+
+    .refresh-bar {
+      background: var(--surface);
+      border-bottom: 1px solid var(--border);
+      padding: 8px 24px;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      font-size: 12px;
+      color: var(--muted);
+    }
+    .refresh-bar span { margin-left: auto; }
+    .refresh-btn {
+      background: transparent;
+      border: 1px solid var(--border);
+      color: var(--text);
+      padding: 4px 12px;
+      border-radius: 6px;
+      cursor: pointer;
+      font-size: 12px;
+    }
+    .refresh-btn:hover { border-color: var(--purple); }
+
+    main { padding: 20px 24px; max-width: 1400px; margin: 0 auto; }
+
+    /* ── Stats cards ── */
+    .stats-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+      gap: 14px;
+      margin-bottom: 24px;
+    }
+    .stat-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      padding: 18px 20px;
+    }
+    .stat-label { font-size: 12px; color: var(--muted); margin-bottom: 8px; text-transform: uppercase; letter-spacing: .5px; }
+    .stat-value { font-size: 32px; font-weight: 700; line-height: 1; }
+    .stat-card.purple .stat-value { color: var(--purple); }
+    .stat-card.gold   .stat-value { color: var(--gold); }
+    .stat-card.green  .stat-value { color: var(--green); }
+    .stat-card.blue   .stat-value { color: #60a5fa; }
+    .stat-card.pink   .stat-value { color: #f472b6; }
+
+    /* ── Columns ── */
+    .columns {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 20px;
+    }
+    @media (max-width: 900px) { .columns { grid-template-columns: 1fr; } }
+
+    .panel {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      overflow: hidden;
+    }
+    .panel-header {
+      padding: 14px 18px;
+      border-bottom: 1px solid var(--border);
+      font-weight: 600;
+      font-size: 13px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+    .panel-count {
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      padding: 2px 8px;
+      font-size: 11px;
+      color: var(--muted);
+    }
+
+    /* ── Questions feed ── */
+    .q-feed { max-height: 560px; overflow-y: auto; }
+    .q-item {
+      padding: 12px 18px;
+      border-bottom: 1px solid var(--border);
+      display: grid;
+      grid-template-columns: auto 1fr auto;
+      gap: 10px;
+      align-items: start;
+    }
+    .q-item:last-child { border-bottom: none; }
+    .q-uid {
+      font-size: 11px;
+      color: var(--muted);
+      background: var(--bg);
+      border-radius: 5px;
+      padding: 2px 7px;
+      white-space: nowrap;
+      font-family: monospace;
+    }
+    .q-text { font-size: 13px; line-height: 1.4; word-break: break-word; }
+    .q-time { font-size: 11px; color: var(--muted); white-space: nowrap; text-align: right; }
+    .q-meta { display: flex; flex-direction: column; gap: 4px; }
+    .badge {
+      display: inline-block;
+      padding: 2px 8px;
+      border-radius: 5px;
+      font-size: 11px;
+      font-weight: 600;
+      text-align: center;
+    }
+    .badge.yes    { background: #14532d; color: #86efac; }
+    .badge.no     { background: #7f1d1d; color: #fca5a5; }
+    .badge.maybe  { background: #78350f; color: #fcd34d; }
+
+    /* ── Users table ── */
+    .users-wrap { max-height: 560px; overflow-y: auto; }
+    table { width: 100%; border-collapse: collapse; font-size: 13px; }
+    th {
+      background: var(--bg);
+      padding: 10px 14px;
+      text-align: left;
+      font-size: 11px;
+      text-transform: uppercase;
+      letter-spacing: .5px;
+      color: var(--muted);
+      position: sticky;
+      top: 0;
+    }
+    td { padding: 10px 14px; border-bottom: 1px solid var(--border); }
+    tr:last-child td { border-bottom: none; }
+    tr:hover td { background: rgba(139,61,255,.06); }
+    .uid-cell { font-family: monospace; font-size: 12px; color: var(--muted); }
+    .premium-badge {
+      background: #422006;
+      color: var(--gold);
+      padding: 2px 8px;
+      border-radius: 5px;
+      font-size: 11px;
+      font-weight: 600;
+    }
+    .free-badge {
+      color: var(--muted);
+      font-size: 11px;
+    }
+
+    .empty { padding: 32px; text-align: center; color: var(--muted); font-size: 13px; }
+
+    /* scrollbar */
+    ::-webkit-scrollbar { width: 5px; }
+    ::-webkit-scrollbar-track { background: transparent; }
+    ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+  </style>
+</head>
+<body>
+
+<!-- Login screen -->
+<div id="login">
+  <div class="logo">🔮</div>
+  <h1>Oracle Admin</h1>
+  <input type="password" id="key-input" placeholder="Введи ключ доступу" />
+  <button onclick="doLogin()">Увійти</button>
+  <div class="err" id="login-err"></div>
+</div>
+
+<!-- Dashboard -->
+<div id="dashboard">
+  <header>
+    <h1>🔮 Oracle Bot — Адмін Панель</h1>
+    <button class="logout-btn" onclick="logout()">Вийти</button>
+  </header>
+  <div class="refresh-bar">
+    <span id="refresh-timer">Оновлено тільки що</span>
+    <button class="refresh-btn" onclick="loadAll()">↺ Оновити</button>
+  </div>
+
+  <main>
+    <!-- Stats -->
+    <div class="stats-grid">
+      <div class="stat-card purple">
+        <div class="stat-label">Всього юзерів</div>
+        <div class="stat-value" id="s-users">—</div>
+      </div>
+      <div class="stat-card gold">
+        <div class="stat-label">Преміум юзерів</div>
+        <div class="stat-value" id="s-premium">—</div>
+      </div>
+      <div class="stat-card green">
+        <div class="stat-label">Питань сьогодні</div>
+        <div class="stat-value" id="s-today">—</div>
+      </div>
+      <div class="stat-card blue">
+        <div class="stat-label">За останню годину</div>
+        <div class="stat-value" id="s-hour">—</div>
+      </div>
+      <div class="stat-card pink">
+        <div class="stat-label">Всього питань</div>
+        <div class="stat-value" id="s-total">—</div>
+      </div>
+    </div>
+
+    <!-- Two columns -->
+    <div class="columns">
+      <!-- Questions feed -->
+      <div class="panel">
+        <div class="panel-header">
+          💬 Останні питання
+          <span class="panel-count" id="q-count">0</span>
+        </div>
+        <div class="q-feed" id="q-feed">
+          <div class="empty">Завантаження...</div>
+        </div>
+      </div>
+
+      <!-- Users table -->
+      <div class="panel">
+        <div class="panel-header">
+          👥 Юзери
+          <span class="panel-count" id="u-count">0</span>
+        </div>
+        <div class="users-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>User ID</th>
+                <th>Всього</th>
+                <th>Сьогодні</th>
+                <th>Статус</th>
+                <th>Остання активність</th>
+              </tr>
+            </thead>
+            <tbody id="u-body">
+              <tr><td colspan="5" class="empty">Завантаження...</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </main>
+</div>
+
+<script>
+  let adminKey = '';
+  let refreshInterval = null;
+  let lastRefresh = null;
+
+  function doLogin() {
+    const k = document.getElementById('key-input').value.trim();
+    if (!k) return;
+    adminKey = k;
+    loadAll().then(ok => {
+      if (ok) {
+        localStorage.setItem('oracle_admin_key', k);
+        document.getElementById('login').style.display = 'none';
+        document.getElementById('dashboard').style.display = 'block';
+        refreshInterval = setInterval(() => { loadAll(); updateTimer(); }, 30000);
+        setInterval(updateTimer, 5000);
+      } else {
+        document.getElementById('login-err').textContent = 'Невірний ключ доступу';
+        adminKey = '';
+      }
+    });
+  }
+
+  function logout() {
+    localStorage.removeItem('oracle_admin_key');
+    clearInterval(refreshInterval);
+    document.getElementById('login').style.display = 'flex';
+    document.getElementById('dashboard').style.display = 'none';
+    document.getElementById('key-input').value = '';
+    adminKey = '';
+  }
+
+  function updateTimer() {
+    if (!lastRefresh) return;
+    const sec = Math.round((Date.now() - lastRefresh) / 1000);
+    const el = document.getElementById('refresh-timer');
+    if (sec < 60) el.textContent = `Оновлено ${sec}с тому`;
+    else el.textContent = `Оновлено ${Math.round(sec/60)}хв тому`;
+  }
+
+  async function apiFetch(path) {
+    const r = await fetch(`/admin/api/${path}?key=${encodeURIComponent(adminKey)}`);
+    if (r.status === 401) return null;
+    return r.json();
+  }
+
+  async function loadAll() {
+    const [stats, users, questions] = await Promise.all([
+      apiFetch('stats'),
+      apiFetch('users'),
+      apiFetch('questions?limit=200'),
+    ]);
+    if (!stats) return false;
+    renderStats(stats);
+    renderUsers(users || []);
+    renderQuestions(questions || []);
+    lastRefresh = Date.now();
+    document.getElementById('refresh-timer').textContent = 'Оновлено тільки що';
+    return true;
+  }
+
+  function renderStats(s) {
+    document.getElementById('s-users').textContent   = s.totalUsers   ?? '—';
+    document.getElementById('s-premium').textContent = s.premiumUsers ?? '—';
+    document.getElementById('s-today').textContent   = s.questionsToday ?? '—';
+    document.getElementById('s-hour').textContent    = s.questionsLastHour ?? '—';
+    document.getElementById('s-total').textContent   = s.totalQuestions ?? '—';
+  }
+
+  function renderQuestions(list) {
+    document.getElementById('q-count').textContent = list.length;
+    const feed = document.getElementById('q-feed');
+    if (!list.length) { feed.innerHTML = '<div class="empty">Питань ще немає</div>'; return; }
+    feed.innerHTML = list.map(q => {
+      const t = new Date(q.ts);
+      const timeStr = t.toLocaleDateString('uk', {day:'2-digit',month:'2-digit'}) + ' ' +
+                      t.toLocaleTimeString('uk', {hour:'2-digit',minute:'2-digit'});
+      const badgeClass = q.color === 'yes' ? 'yes' : q.color === 'no' ? 'no' : 'maybe';
+      const verdictShort = q.color === 'yes' ? 'ТАК' : q.color === 'no' ? 'НІ' : 'МОЖЛИВО';
+      return `<div class="q-item">
+        <div>
+          <div class="q-uid">${escHtml(q.userId)}</div>
+        </div>
+        <div class="q-meta">
+          <div class="q-text">${escHtml(q.question)}</div>
+          <span class="badge ${badgeClass}">${verdictShort}</span>
+        </div>
+        <div class="q-time">${timeStr}</div>
+      </div>`;
+    }).join('');
+  }
+
+  function renderUsers(list) {
+    document.getElementById('u-count').textContent = list.length;
+    const tbody = document.getElementById('u-body');
+    if (!list.length) { tbody.innerHTML = '<tr><td colspan="5" class="empty">Юзерів ще немає</td></tr>'; return; }
+    tbody.innerHTML = list.map(u => {
+      const lastSeen = u.lastSeen
+        ? new Date(u.lastSeen).toLocaleString('uk', {day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'})
+        : '—';
+      const premiumEl = u.isPremium
+        ? `<span class="premium-badge">⭐ Преміум</span>`
+        : `<span class="free-badge">Безкоштовний</span>`;
+      return `<tr>
+        <td class="uid-cell">${escHtml(u.userId)}</td>
+        <td><strong>${u.totalAsked}</strong></td>
+        <td>${u.dailyCount}</td>
+        <td>${premiumEl}</td>
+        <td style="color:var(--muted)">${lastSeen}</td>
+      </tr>`;
+    }).join('');
+  }
+
+  function escHtml(str) {
+    return String(str).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+  }
+
+  document.getElementById('key-input').addEventListener('keydown', e => {
+    if (e.key === 'Enter') doLogin();
+  });
+
+  // Auto-login from saved key
+  const saved = localStorage.getItem('oracle_admin_key');
+  if (saved) {
+    adminKey = saved;
+    loadAll().then(ok => {
+      if (ok) {
+        document.getElementById('login').style.display = 'none';
+        document.getElementById('dashboard').style.display = 'block';
+        refreshInterval = setInterval(() => { loadAll(); updateTimer(); }, 30000);
+        setInterval(updateTimer, 5000);
+      } else {
+        localStorage.removeItem('oracle_admin_key');
+        adminKey = '';
+      }
+    });
+  }
+</script>
+</body>
+</html>

@@ -5,20 +5,25 @@ const path       = require('path');
 const https      = require('https');
 const TelegramBot = require('node-telegram-bot-api');
 const { getOracleAnswer } = require('./config/oracleAnswers');
-let getStatus, increment, activatePremium;
+let getStatus, increment, activatePremium, logQuestion, getStats, getUsers, getQuestions;
 try {
-  ({ getStatus, increment, activatePremium } = require('./services/userService'));
+  ({ getStatus, increment, activatePremium, logQuestion, getStats, getUsers, getQuestions } = require('./services/userService'));
 } catch (e) {
   console.error('[userService] Load error:', e.message);
   getStatus    = () => ({ canAsk: true, remaining: 2, isPremium: false });
   increment    = () => {};
   activatePremium = () => new Date().toISOString();
+  logQuestion  = () => {};
+  getStats     = () => ({});
+  getUsers     = () => [];
+  getQuestions = () => [];
 }
 
-const app       = express();
-const PORT      = process.env.PORT || 3000;
-const BOT_TOKEN = process.env.BOT_TOKEN;
-const WEBAPP_URL = process.env.WEBAPP_URL || `http://localhost:${PORT}`;
+const app          = express();
+const PORT         = process.env.PORT || 3000;
+const BOT_TOKEN    = process.env.BOT_TOKEN;
+const WEBAPP_URL   = process.env.WEBAPP_URL || `http://localhost:${PORT}`;
+const ADMIN_SECRET = process.env.ADMIN_SECRET || (BOT_TOKEN ? BOT_TOKEN.slice(0, 12) : 'oracle_admin');
 
 // ─── Middleware ───────────────────────────────────────────────────────────────
 app.use(cors());
@@ -240,30 +245,60 @@ api.post('/ask', (req, res) => {
     try {
       const status = getStatus(userId);
       if (!status.canAsk) {
-        return res.status(403).json({
-          error: 'limit',
-          message: 'Лимит вопросов исчерпан',
-          status,
-        });
+        return res.status(403).json({ error: 'limit', message: 'Лимит вопросов исчерпан', status });
       }
       increment(userId);
       const answer = getOracleAnswer();
+      logQuestion(userId, question.trim(), answer);
       return res.json({ question: question.trim(), answer, status: getStatus(userId) });
     } catch (e) {
       console.error('[ask/userService]', e.message || e);
-      // fallback — відповідаємо без ліміту
       const answer = getOracleAnswer();
+      logQuestion(userId, question.trim(), answer);
       return res.json({ question: question.trim(), answer });
     }
   }
 
   const answer = getOracleAnswer();
+  logQuestion(userId, question.trim(), answer);
   res.json({ question: question.trim(), answer });
 });
 
 app.use('/api', api);
 
-// ─── Static + SPA fallback (після /api) ──────────────────────────────────────
+// ─── Admin panel ──────────────────────────────────────────────────────────────
+function adminAuth(req, res, next) {
+  const key = req.query.key || req.headers['x-admin-key'];
+  if (key !== ADMIN_SECRET) return res.status(401).json({ error: 'Unauthorized' });
+  next();
+}
+
+app.get('/admin', (req, res) => {
+  res.sendFile(path.join(__dirname, '../frontend/admin.html'));
+});
+
+const adminApi = express.Router();
+adminApi.use(adminAuth);
+
+adminApi.get('/stats', (req, res) => {
+  try { res.json(getStats()); }
+  catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+adminApi.get('/users', (req, res) => {
+  try { res.json(getUsers()); }
+  catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+adminApi.get('/questions', (req, res) => {
+  const limit = Math.min(parseInt(req.query.limit) || 100, 500);
+  try { res.json(getQuestions(limit)); }
+  catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+app.use('/admin/api', adminApi);
+
+// ─── Static + SPA fallback (після /api та /admin) ────────────────────────────
 app.use(express.static(path.join(__dirname, '../frontend')));
 app.get('/{*path}', (req, res) => {
   res.sendFile(path.join(__dirname, '../frontend/index.html'));
@@ -273,12 +308,11 @@ app.get('/{*path}', (req, res) => {
 // eslint-disable-next-line no-unused-vars
 app.use((err, req, res, next) => {
   console.error('[GlobalError]', err.message || err);
-  if (!res.headersSent) {
-    res.status(500).json({ error: err.message || 'Internal Server Error' });
-  }
+  if (!res.headersSent) res.status(500).json({ error: err.message || 'Internal Server Error' });
 });
 
 // ─── Start ────────────────────────────────────────────────────────────────────
 app.listen(PORT, () => {
-  console.log(`[Server] Oracle Bot v2.0 запущено на http://localhost:${PORT}`);
+  console.log(`[Server] Oracle Bot v2.3 on http://localhost:${PORT}`);
+  console.log(`[Admin]  /admin | key: ${ADMIN_SECRET}`);
 });

@@ -2,17 +2,26 @@
 const fs   = require('fs');
 const path = require('path');
 
-const STORAGE_DIR = path.join(__dirname, '../storage');
-const FILE        = path.join(STORAGE_DIR, 'users.json');
-const FREE_LIMIT  = 2;
+const STORAGE_DIR  = path.join(__dirname, '../storage');
+const FILE         = path.join(STORAGE_DIR, 'users.json');
+const Q_FILE       = path.join(STORAGE_DIR, 'questions.json');
+const FREE_LIMIT   = 2;
+const Q_MAX        = 1000;
 
-// In-memory fallback if filesystem not writable (Railway ephemeral FS)
-let memStore = {};
-let useFile  = true;
+let memStore   = {};
+let questionLog = [];
+let useFile    = true;
 
 try {
   if (!fs.existsSync(STORAGE_DIR)) fs.mkdirSync(STORAGE_DIR, { recursive: true });
 } catch { useFile = false; }
+
+// load questions log on startup
+try {
+  if (useFile && fs.existsSync(Q_FILE)) {
+    questionLog = JSON.parse(fs.readFileSync(Q_FILE, 'utf8'));
+  }
+} catch {}
 
 function load() {
   if (!useFile) return { ...memStore };
@@ -27,6 +36,12 @@ function save(data) {
   catch { useFile = false; }
 }
 
+function saveQuestions() {
+  if (!useFile) return;
+  try { fs.writeFileSync(Q_FILE, JSON.stringify(questionLog)); }
+  catch {}
+}
+
 function today() {
   return new Date().toISOString().slice(0, 10);
 }
@@ -35,7 +50,7 @@ function hydrate(userId) {
   const users = load();
   const id    = String(userId);
   if (!users[id]) {
-    users[id] = { dailyCount: 0, lastReset: today(), premiumUntil: null, totalAsked: 0 };
+    users[id] = { dailyCount: 0, lastReset: today(), premiumUntil: null, totalAsked: 0, lastSeen: null };
   }
   const u = users[id];
   if (u.lastReset !== today()) {
@@ -59,8 +74,9 @@ function getStatus(userId) {
 
 function increment(userId) {
   const { users, u, id } = hydrate(userId);
-  u.dailyCount   += 1;
-  u.totalAsked    = (u.totalAsked || 0) + 1;
+  u.dailyCount = (u.dailyCount || 0) + 1;
+  u.totalAsked = (u.totalAsked || 0) + 1;
+  u.lastSeen   = Date.now();
   users[id] = u;
   save(users);
 }
@@ -76,4 +92,52 @@ function activatePremium(userId, days = 30) {
   return u.premiumUntil;
 }
 
-module.exports = { getStatus, increment, activatePremium };
+function logQuestion(userId, question, answer) {
+  questionLog.unshift({
+    userId: userId ? String(userId) : 'guest',
+    question,
+    color:  answer.color,
+    verdict: answer.verdict,
+    ts: Date.now(),
+  });
+  if (questionLog.length > Q_MAX) questionLog.length = Q_MAX;
+  saveQuestions();
+}
+
+function getStats() {
+  const users   = load();
+  const todayStr = today();
+  const now     = new Date();
+  let totalUsers = 0, premiumUsers = 0, questionsToday = 0, totalQuestions = 0;
+
+  for (const u of Object.values(users)) {
+    totalUsers++;
+    if (u.premiumUntil && new Date(u.premiumUntil) > now) premiumUsers++;
+    totalQuestions += (u.totalAsked || 0);
+    if (u.lastReset === todayStr) questionsToday += (u.dailyCount || 0);
+  }
+
+  const hourAgo = Date.now() - 3600_000;
+  const questionsLastHour = questionLog.filter(q => q.ts > hourAgo).length;
+
+  return { totalUsers, premiumUsers, questionsToday, questionsLastHour, totalQuestions, loggedQuestions: questionLog.length };
+}
+
+function getUsers() {
+  const users = load();
+  const now   = new Date();
+  return Object.entries(users).map(([id, u]) => ({
+    userId:      id,
+    totalAsked:  u.totalAsked  || 0,
+    dailyCount:  u.dailyCount  || 0,
+    isPremium:   !!(u.premiumUntil && new Date(u.premiumUntil) > now),
+    premiumUntil: u.premiumUntil || null,
+    lastSeen:    u.lastSeen    || null,
+  })).sort((a, b) => b.totalAsked - a.totalAsked);
+}
+
+function getQuestions(limit = 200) {
+  return questionLog.slice(0, limit);
+}
+
+module.exports = { getStatus, increment, activatePremium, logQuestion, getStats, getUsers, getQuestions };
