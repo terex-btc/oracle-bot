@@ -666,6 +666,30 @@ const orbWrap   = document.getElementById('orb-wrapper');
 
 input.addEventListener('input', () => { charCount.textContent = input.value.length; });
 
+// ─── Keyboard detection ─────────────────────────────────────────
+// Ховаємо кулю коли клавіатура відкрита, щоб кнопка була видна
+const FULL_HEIGHT = window.visualViewport?.height || window.innerHeight;
+
+function onViewportResize() {
+  const h = window.visualViewport?.height || window.innerHeight;
+  document.body.classList.toggle('keyboard-open', h < FULL_HEIGHT * 0.78);
+}
+
+if (window.visualViewport) {
+  window.visualViewport.addEventListener('resize', onViewportResize);
+} else {
+  window.addEventListener('resize', onViewportResize);
+}
+
+// Fallback через focus/blur (для старих Telegram клієнтів)
+input.addEventListener('focus', () => document.body.classList.add('keyboard-open'));
+input.addEventListener('blur',  () => {
+  // Невелика затримка щоб не мигало якщо фокус перейшов на іншій елемент
+  setTimeout(() => {
+    if (document.activeElement !== input) document.body.classList.remove('keyboard-open');
+  }, 150);
+});
+
 // ─── Ask ────────────────────────────────────────────────────────
 async function askOracle() {
   const question = input.value.trim();
