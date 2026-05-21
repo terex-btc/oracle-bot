@@ -684,11 +684,24 @@ if (window.visualViewport) {
 // Fallback через focus/blur (для старих Telegram клієнтів)
 input.addEventListener('focus', () => document.body.classList.add('keyboard-open'));
 input.addEventListener('blur',  () => {
-  // Невелика затримка щоб не мигало якщо фокус перейшов на іншій елемент
   setTimeout(() => {
     if (document.activeElement !== input) document.body.classList.remove('keyboard-open');
   }, 150);
 });
+
+// Кнопка ↓ закриває клавіатуру
+document.getElementById('kbd-dismiss')?.addEventListener('mousedown', e => {
+  e.preventDefault(); // не даємо інпуту отримати blur до кліку
+  input.blur();
+});
+
+// Тап на хедер закриває клавіатуру
+document.querySelector('.oracle-header')?.addEventListener('click', () => {
+  if (document.body.classList.contains('keyboard-open')) input.blur();
+});
+
+// Тап на орб-зону (навіть коли вона collapsed) закриває клавіатуру
+document.querySelector('.orb-section')?.addEventListener('click', () => input.blur());
 
 // ─── Ask ────────────────────────────────────────────────────────
 async function askOracle() {
