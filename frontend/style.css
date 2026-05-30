@@ -301,7 +301,6 @@ body.keyboard-open .question-section {
 #orb-canvas {
   position: relative;
   z-index: 3;
-  border-radius: 50%;
   transition: filter 0.8s ease;
 }
 
@@ -313,21 +312,21 @@ body.keyboard-open .question-section {
 
 .ring-1 {
   width: 308px; height: 308px;
-  border: 1px solid rgba(139,61,255,0.28);
-  animation: ring-spin 10s linear infinite;
-  background: conic-gradient(from 0deg, transparent 65%, rgba(139,61,255,0.5) 82%, rgba(200,150,255,0.3) 88%, transparent 100%);
+  border: 1px solid rgba(240,185,50,0.22);
+  animation: ring-spin 12s linear infinite;
+  background: conic-gradient(from 0deg, transparent 60%, rgba(240,185,50,0.45) 80%, rgba(255,230,110,0.25) 88%, transparent 100%);
 }
 .ring-2 {
   width: 340px; height: 340px;
-  border: 1px solid rgba(0,212,255,0.14);
-  animation: ring-spin 16s linear infinite reverse;
-  background: conic-gradient(from 120deg, transparent 65%, rgba(0,212,255,0.4) 82%, rgba(100,230,255,0.2) 88%, transparent 100%);
+  border: 1px solid rgba(200,145,30,0.12);
+  animation: ring-spin 20s linear infinite reverse;
+  background: conic-gradient(from 130deg, transparent 62%, rgba(220,165,40,0.35) 80%, rgba(255,215,80,0.18) 88%, transparent 100%);
 }
 .ring-3 {
   width: 374px; height: 374px;
-  border: 1px solid rgba(244,63,143,0.09);
-  animation: ring-spin 24s linear infinite;
-  background: conic-gradient(from 240deg, transparent 65%, rgba(244,63,143,0.3) 82%, transparent 100%);
+  border: 1px solid rgba(180,130,20,0.07);
+  animation: ring-spin 30s linear infinite;
+  background: conic-gradient(from 250deg, transparent 64%, rgba(200,150,30,0.22) 80%, transparent 100%);
 }
 
 @keyframes ring-spin { to { transform: rotate(360deg); } }
@@ -336,9 +335,9 @@ body.keyboard-open .question-section {
   position: absolute;
   width: 260px; height: 260px;
   border-radius: 50%;
-  background: radial-gradient(circle, rgba(139,61,255,0.3) 0%, transparent 70%);
+  background: radial-gradient(circle, rgba(240,180,48,0.22) 0%, rgba(200,140,30,0.08) 55%, transparent 75%);
   z-index: 1;
-  animation: glow-pulse 3s ease-in-out infinite;
+  animation: glow-pulse 3.5s ease-in-out infinite;
   transition: background 0.8s ease;
 }
 
@@ -360,9 +359,9 @@ body.keyboard-open .question-section {
   position: absolute;
   width: 3px; height: 3px;
   border-radius: 50%;
-  background: var(--purple-l);
+  background: #f5c842;
   top: 50%; left: 50%;
-  box-shadow: 0 0 6px var(--purple-l);
+  box-shadow: 0 0 8px rgba(245,200,66,0.9), 0 0 3px #fff;
 }
 
 .orb-status {

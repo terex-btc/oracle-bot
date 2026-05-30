@@ -86,7 +86,7 @@ function createStars(container, count = 80) {
 }
 document.querySelectorAll('.stars-bg').forEach(c => createStars(c));
 
-// ─── Premium Orb Canvas ────────────────────────────────────────
+// ─── Crystal Ball Canvas ────────────────────────────────────────
 function OrbCanvas(canvas, size = 280, isMain = false) {
   const dpr = Math.min(window.devicePixelRatio || 1, 2);
   canvas.width  = size * dpr;
@@ -97,10 +97,14 @@ function OrbCanvas(canvas, size = 280, isMain = false) {
   const ctx = canvas.getContext('2d');
   ctx.scale(dpr, dpr);
 
-  const cx = size / 2, cy = size / 2;
-  const r  = size * 0.42;
+  // Main orb: sphere sits higher to leave room for base below (cy=118, r=108 → base fits in 280)
+  const cx = size / 2;
+  const cy = isMain ? size * 0.420 : size / 2;
+  const r  = isMain ? size * 0.382 : size * 0.41;
+
   let phase = 0;
-  let color = { r: 139, g: 61, b: 255 };
+  // Default: warm golden (crystal ball look)
+  let color = { r: 240, g: 170, b: 42 };
   let targetColor = { ...color };
   let raf;
 
@@ -110,179 +114,131 @@ function OrbCanvas(canvas, size = 280, isMain = false) {
     return `rgba(${clamp(c.r,0,255)|0},${clamp(c.g,0,255)|0},${clamp(c.b,0,255)|0},${a})`;
   }
 
-  // ── Internal galaxy stars ──────────────────────────────────────
-  const galaxyStars = Array.from({ length: isMain ? 90 : 30 }, () => {
+  // ── Constellation nodes (light network) ───────────────────────
+  const nodeCount = isMain ? 22 : 8;
+  const nodes = Array.from({ length: nodeCount }, () => {
     const angle = Math.random() * Math.PI * 2;
-    const dist  = Math.pow(Math.random(), 0.6) * r * 0.88;
+    const dist  = Math.pow(Math.random(), 0.5) * r * 0.78;
     return {
-      x: Math.cos(angle) * dist,
-      y: Math.sin(angle) * dist * 0.75,
-      size: Math.random() * (isMain ? 1.6 : 1.0) + 0.3,
-      brightness: Math.random() * 0.7 + 0.3,
-      twinkleSpeed: Math.random() * 0.05 + 0.01,
-      twinkleOffset: Math.random() * Math.PI * 2,
+      x:  Math.cos(angle) * dist,
+      y:  Math.sin(angle) * dist,
+      vx: (Math.random() - 0.5) * 0.17,
+      vy: (Math.random() - 0.5) * 0.13,
+      size: Math.random() * (isMain ? 3.2 : 1.8) + 1.2,
+      brightness: Math.random() * 0.5 + 0.5,
+      twinkle:      Math.random() * Math.PI * 2,
+      twinkleSpeed: Math.random() * 0.025 + 0.008,
     };
   });
 
-  // ── Nebula blobs ───────────────────────────────────────────────
-  const blobs = [
-    { angle: 0.5,  speed:  0.006, orbitR: r * 0.28, size: r * 0.55, type: 0 },
-    { angle: 2.1,  speed: -0.004, orbitR: r * 0.20, size: r * 0.45, type: 1 },
-    { angle: 3.8,  speed:  0.007, orbitR: r * 0.32, size: r * 0.50, type: 2 },
-    { angle: 5.2,  speed: -0.005, orbitR: r * 0.15, size: r * 0.40, type: 0 },
-    { angle: 1.2,  speed:  0.003, orbitR: r * 0.38, size: r * 0.42, type: 1 },
+  // ── White dust stars scattered inside ─────────────────────────
+  const galaxyStars = Array.from({ length: isMain ? 55 : 18 }, () => {
+    const angle = Math.random() * Math.PI * 2;
+    const dist  = Math.pow(Math.random(), 0.45) * r * 0.88;
+    return {
+      x: Math.cos(angle) * dist,
+      y: Math.sin(angle) * dist,
+      size: Math.random() * 1.3 + 0.25,
+      brightness: Math.random() * 0.65 + 0.3,
+      twinkleSpeed:   Math.random() * 0.03 + 0.008,
+      twinkleOffset:  Math.random() * Math.PI * 2,
+    };
+  });
+
+  // ── Mystic fog blobs ───────────────────────────────────────────
+  const blobs = isMain ? [
+    { angle: 0.5,  speed:  0.0032, orbitR: r * 0.22, size: r * 0.54 },
+    { angle: 2.2,  speed: -0.0026, orbitR: r * 0.18, size: r * 0.47 },
+    { angle: 3.9,  speed:  0.0040, orbitR: r * 0.28, size: r * 0.50 },
+  ] : [
+    { angle: 1.0,  speed:  0.004,  orbitR: r * 0.12, size: r * 0.44 },
   ];
 
-  // ── Sparkles (зовнішні іскри) ──────────────────────────────────
-  const sparkles = isMain ? Array.from({ length: 14 }, (_, i) => ({
-    angle: (i / 14) * Math.PI * 2 + Math.random() * 0.5,
-    orbitR: r * (1.15 + Math.random() * 0.45),
-    speed: (Math.random() * 0.008 + 0.003) * (Math.random() > 0.5 ? 1 : -1),
-    size: Math.random() * 2.5 + 0.8,
-    brightness: Math.random() * 0.6 + 0.4,
-    twinkle: Math.random() * Math.PI * 2,
-    twinkleSpeed: Math.random() * 0.08 + 0.03,
-  })) : [];
-
-  // ── Light rays ─────────────────────────────────────────────────
-  const rays = isMain ? Array.from({ length: 8 }, (_, i) => ({
-    angle: (i / 8) * Math.PI * 2,
-    length: r * (0.6 + Math.random() * 0.8),
-    width: Math.random() * 3 + 1,
-    speed: (Math.random() * 0.003 + 0.001) * (i % 2 ? 1 : -1),
-    opacity: Math.random() * 0.12 + 0.04,
-  })) : [];
-
-  // ── Energy veins (прожилки) ────────────────────────────────────
-  const veins = isMain ? Array.from({ length: 6 }, (_, i) => ({
-    angle: (i / 6) * Math.PI * 2,
-    speed: 0.004 + Math.random() * 0.003,
-    radius: r * (0.3 + Math.random() * 0.5),
-    opacity: 0.04 + Math.random() * 0.06,
-  })) : [];
-
-  function drawRays(t) {
-    rays.forEach(ray => {
-      ray.angle += ray.speed;
-      const pulse = 0.5 + Math.sin(t * 1.5 + ray.angle) * 0.5;
-      const op = ray.opacity * pulse;
-      if (op < 0.005) return;
-
-      const x1 = cx + Math.cos(ray.angle) * r;
-      const y1 = cy + Math.sin(ray.angle) * r;
-      const x2 = cx + Math.cos(ray.angle) * (r + ray.length);
-      const y2 = cy + Math.sin(ray.angle) * (r + ray.length);
-
-      const grad = ctx.createLinearGradient(x1, y1, x2, y2);
-      grad.addColorStop(0,   rgba(color, op));
-      grad.addColorStop(0.4, rgba(color, op * 0.4));
-      grad.addColorStop(1,   'transparent');
-
-      ctx.save();
-      ctx.beginPath();
-      ctx.moveTo(x1, y1);
-      ctx.lineTo(x2, y2);
-      ctx.lineWidth = ray.width * pulse;
-      ctx.strokeStyle = grad;
-      ctx.lineCap = 'round';
-      ctx.stroke();
-      ctx.restore();
-    });
-  }
-
+  // ── Outer golden aura ──────────────────────────────────────────
   function drawOuterAura() {
-    // 4 шари ауры з різним радіусом і прозорістю
     const layers = [
-      { r: r * 2.4, op: 0.22 },
-      { r: r * 1.85, op: 0.32 },
-      { r: r * 1.45, op: 0.40 },
-      { r: r * 1.15, op: 0.30 },
+      { rr: r * 1.72, op: 0.12 },
+      { rr: r * 1.36, op: 0.20 },
+      { rr: r * 1.12, op: 0.27 },
     ];
     layers.forEach(l => {
-      const ag = ctx.createRadialGradient(cx, cy, r * 0.7, cx, cy, l.r);
-      ag.addColorStop(0,   rgba(color, l.op));
-      ag.addColorStop(0.4, rgba(color, l.op * 0.5));
+      const ag = ctx.createRadialGradient(cx, cy, r * 0.76, cx, cy, l.rr);
+      ag.addColorStop(0,    rgba(color, l.op));
+      ag.addColorStop(0.45, rgba(color, l.op * 0.42));
       ag.addColorStop(1,   'transparent');
       ctx.fillStyle = ag;
       ctx.beginPath();
-      ctx.arc(cx, cy, l.r, 0, Math.PI * 2);
+      ctx.arc(cx, cy, l.rr, 0, Math.PI * 2);
       ctx.fill();
     });
   }
 
-  function drawSparkles(t) {
-    sparkles.forEach(sp => {
-      sp.angle  += sp.speed;
-      sp.twinkle += sp.twinkleSpeed;
-      const brightness = sp.brightness * (0.5 + Math.sin(sp.twinkle) * 0.5);
-      if (brightness < 0.05) return;
-
-      const sx = cx + Math.cos(sp.angle) * sp.orbitR;
-      const sy = cy + Math.sin(sp.angle) * sp.orbitR * 0.85;
-
-      // Іскра — хрест із 4 ліній
-      const len = sp.size * (1 + brightness * 1.5);
-      ctx.save();
-      ctx.globalAlpha = brightness;
-      ctx.strokeStyle = `rgba(255,255,255,${brightness})`;
-      ctx.lineWidth = sp.size * 0.5;
-      ctx.lineCap = 'round';
-
-      // Вертикальна
-      ctx.beginPath();
-      ctx.moveTo(sx, sy - len); ctx.lineTo(sx, sy + len);
-      ctx.stroke();
-      // Горизонтальна
-      ctx.beginPath();
-      ctx.moveTo(sx - len, sy); ctx.lineTo(sx + len, sy);
-      ctx.stroke();
-      // Діагональна (менша)
-      ctx.lineWidth = sp.size * 0.25;
-      ctx.beginPath();
-      ctx.moveTo(sx - len * 0.5, sy - len * 0.5); ctx.lineTo(sx + len * 0.5, sy + len * 0.5);
-      ctx.stroke();
-      ctx.beginPath();
-      ctx.moveTo(sx + len * 0.5, sy - len * 0.5); ctx.lineTo(sx - len * 0.5, sy + len * 0.5);
-      ctx.stroke();
-
-      // Ядро
-      const core = ctx.createRadialGradient(sx, sy, 0, sx, sy, sp.size * 2);
-      core.addColorStop(0,   `rgba(255,255,255,${brightness * 0.9})`);
-      core.addColorStop(0.3, rgba(color, brightness * 0.5));
-      core.addColorStop(1,   'transparent');
-      ctx.fillStyle = core;
-      ctx.beginPath();
-      ctx.arc(sx, sy, sp.size * 2, 0, Math.PI * 2);
-      ctx.fill();
-
-      ctx.restore();
-    });
-  }
-
+  // ── Crystal ball interior ──────────────────────────────────────
   function drawOrb(t) {
     ctx.save();
     ctx.beginPath();
     ctx.arc(cx, cy, r, 0, Math.PI * 2);
     ctx.clip();
 
-    // ── 1. Deep space base ──────────────────────────────────────
-    const base = ctx.createRadialGradient(cx - r * 0.1, cy - r * 0.1, r * 0.02, cx, cy, r);
-    const cr = color.r, cg = color.g, cb = color.b;
-    base.addColorStop(0,    `rgba(${clamp(cr+80,0,255)|0},${clamp(cg+60,0,255)|0},255,1)`);
-    base.addColorStop(0.35, `rgba(${cr|0},${cg|0},${cb|0},1)`);
-    base.addColorStop(0.7,  `rgba(${clamp(cr-40,0,255)|0},${clamp(cg-20,0,255)|0},${clamp(cb-10,0,255)|0},1)`);
-    base.addColorStop(1,    `rgba(${clamp(cr-90,0,255)|0},${clamp(cg-50,0,255)|0},${clamp(cb-30,0,255)|0},1)`);
+    // 1. Deep space base (dark navy/indigo)
+    const base = ctx.createRadialGradient(cx - r * 0.12, cy - r * 0.12, r * 0.03, cx, cy, r);
+    base.addColorStop(0,    `rgba(18,28,90,1)`);
+    base.addColorStop(0.38, `rgba(6,12,52,1)`);
+    base.addColorStop(0.72, `rgba(3,5,28,1)`);
+    base.addColorStop(1,    `rgba(1,2,12,1)`);
     ctx.fillStyle = base;
     ctx.fillRect(0, 0, size, size);
 
-    // ── 2. Galaxy stars inside ──────────────────────────────────
+    // 2. Mystic blue-indigo fog
+    blobs.forEach(b => {
+      b.angle += b.speed;
+      const bx = cx + Math.cos(b.angle) * b.orbitR;
+      const by = cy + Math.sin(b.angle) * b.orbitR * 0.72;
+      const pulse = 0.075 + Math.sin(t * 0.75 + b.angle) * 0.035;
+      const gb = ctx.createRadialGradient(bx, by, 0, bx, by, b.size);
+      gb.addColorStop(0,   `rgba(25,55,185,${pulse})`);
+      gb.addColorStop(0.4, `rgba(50,15,115,${pulse * 0.45})`);
+      gb.addColorStop(1,   'transparent');
+      ctx.fillStyle = gb;
+      ctx.fillRect(0, 0, size, size);
+    });
+
+    // 3. Constellation connections — golden lines between nodes
+    nodes.forEach(n => {
+      n.x += n.vx; n.y += n.vy;
+      const nd = Math.sqrt(n.x * n.x + n.y * n.y);
+      if (nd > r * 0.79) { n.vx *= -0.94; n.vy *= -0.94; }
+    });
+    const connectDist = r * (isMain ? 0.60 : 0.68);
+    for (let i = 0; i < nodes.length; i++) {
+      for (let j = i + 1; j < nodes.length; j++) {
+        const ni = nodes[i], nj = nodes[j];
+        const dx = nj.x - ni.x, dy = nj.y - ni.y;
+        const d  = Math.sqrt(dx * dx + dy * dy);
+        if (d > connectDist) continue;
+        const alpha = (1 - d / connectDist) * 0.52;
+        const lg = ctx.createLinearGradient(cx+ni.x, cy+ni.y, cx+nj.x, cy+nj.y);
+        lg.addColorStop(0,   rgba(color, alpha * ni.brightness));
+        lg.addColorStop(0.5, rgba(color, alpha));
+        lg.addColorStop(1,   rgba(color, alpha * nj.brightness));
+        ctx.strokeStyle = lg;
+        ctx.lineWidth   = isMain ? 0.88 : 0.68;
+        ctx.lineCap     = 'round';
+        ctx.beginPath();
+        ctx.moveTo(cx + ni.x, cy + ni.y);
+        ctx.lineTo(cx + nj.x, cy + nj.y);
+        ctx.stroke();
+      }
+    }
+
+    // 4. White dust stars
     galaxyStars.forEach(s => {
       const tw = 0.5 + Math.sin(t * s.twinkleSpeed * 60 + s.twinkleOffset) * 0.5;
       const op = s.brightness * tw;
       if (op < 0.05) return;
-      const sg = ctx.createRadialGradient(cx + s.x, cy + s.y, 0, cx + s.x, cy + s.y, s.size * 2);
+      const sg = ctx.createRadialGradient(cx+s.x, cy+s.y, 0, cx+s.x, cy+s.y, s.size * 2.5);
       sg.addColorStop(0,   `rgba(255,255,255,${op})`);
-      sg.addColorStop(0.5, `rgba(220,200,255,${op * 0.4})`);
+      sg.addColorStop(0.4, `rgba(210,215,255,${op * 0.4})`);
       sg.addColorStop(1,   'transparent');
       ctx.fillStyle = sg;
       ctx.beginPath();
@@ -290,119 +246,204 @@ function OrbCanvas(canvas, size = 280, isMain = false) {
       ctx.fill();
     });
 
-    // ── 3. Nebula blobs ─────────────────────────────────────────
-    const blobColors = [
-      [0, 212, 255],   // cyan
-      [244, 63, 143],  // pink
-      [255, 200, 80],  // gold
-    ];
-    blobs.forEach(b => {
-      b.angle += b.speed;
-      const bx = cx + Math.cos(b.angle) * b.orbitR;
-      const by = cy + Math.sin(b.angle) * b.orbitR * 0.7;
-      const pulse = 0.10 + Math.sin(t * 1.2 + b.angle) * 0.05;
-      const bc = blobColors[b.type];
-      const gb = ctx.createRadialGradient(bx, by, 0, bx, by, b.size);
-      gb.addColorStop(0, `rgba(${bc[0]},${bc[1]},${bc[2]},${pulse})`);
-      gb.addColorStop(0.5, `rgba(${bc[0]},${bc[1]},${bc[2]},${pulse * 0.3})`);
-      gb.addColorStop(1, 'transparent');
-      ctx.fillStyle = gb;
-      ctx.fillRect(0, 0, size, size);
+    // 5. Constellation nodes — glowing golden dots
+    nodes.forEach(n => {
+      n.twinkle += n.twinkleSpeed;
+      const tw = 0.55 + Math.sin(n.twinkle) * 0.45;
+      const a  = n.brightness * tw;
+      const ng = ctx.createRadialGradient(cx+n.x, cy+n.y, 0, cx+n.x, cy+n.y, n.size * 4.5);
+      ng.addColorStop(0,    rgba(color, a * 0.68));
+      ng.addColorStop(0.35, rgba(color, a * 0.22));
+      ng.addColorStop(1,   'transparent');
+      ctx.fillStyle = ng;
+      ctx.beginPath();
+      ctx.arc(cx + n.x, cy + n.y, n.size * 4.5, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.fillStyle = `rgba(255,255,255,${a * 0.88})`;
+      ctx.beginPath();
+      ctx.arc(cx + n.x, cy + n.y, n.size * 0.75, 0, Math.PI * 2);
+      ctx.fill();
     });
 
-    // ── 4. Energy veins ─────────────────────────────────────────
-    veins.forEach(v => {
-      v.angle += v.speed;
-      const vx = cx + Math.cos(v.angle) * v.radius;
-      const vy = cy + Math.sin(v.angle) * v.radius * 0.8;
-      const vg = ctx.createRadialGradient(vx, vy, 0, vx, vy, r * 0.3);
-      vg.addColorStop(0, `rgba(255,255,255,${v.opacity})`);
-      vg.addColorStop(1, 'transparent');
-      ctx.fillStyle = vg;
-      ctx.fillRect(0, 0, size, size);
-    });
-
-    // ── 5. Caustic ring (яскравий край) ────────────────────────
-    const caustic = ctx.createRadialGradient(cx, cy, r * 0.72, cx, cy, r);
+    // 6. Caustic glass edge
+    const cr = color.r, cg = color.g, cb = color.b;
+    const caustic = ctx.createRadialGradient(cx, cy, r * 0.77, cx, cy, r);
     caustic.addColorStop(0,    'transparent');
-    caustic.addColorStop(0.82, `rgba(${clamp(cr+40,0,255)|0},${clamp(cg+20,0,255)|0},255,0.08)`);
-    caustic.addColorStop(0.92, `rgba(${clamp(cr+80,0,255)|0},${clamp(cg+50,0,255)|0},255,0.18)`);
-    caustic.addColorStop(0.97, `rgba(255,255,255,0.22)`);
-    caustic.addColorStop(1,    `rgba(${clamp(cr-60,0,255)|0},${clamp(cg-30,0,255)|0},${cb|0},0.5)`);
+    caustic.addColorStop(0.79, `rgba(${clamp(cr,0,255)|0},${clamp(cg,0,255)|0},140,0.05)`);
+    caustic.addColorStop(0.92, `rgba(${clamp(cr+20,0,255)|0},${clamp(cg+15,0,255)|0},180,0.13)`);
+    caustic.addColorStop(0.97, `rgba(255,255,255,0.19)`);
+    caustic.addColorStop(1,    `rgba(12,6,50,0.56)`);
     ctx.fillStyle = caustic;
     ctx.fillRect(0, 0, size, size);
 
-    // ── 6. Depth shadow ─────────────────────────────────────────
-    const shadow = ctx.createRadialGradient(cx + r * 0.15, cy + r * 0.2, r * 0.3, cx, cy, r);
+    // 7. Depth shadow (bottom-right darker)
+    const shadow = ctx.createRadialGradient(cx + r * 0.20, cy + r * 0.23, r * 0.18, cx, cy, r);
     shadow.addColorStop(0, 'transparent');
-    shadow.addColorStop(1, `rgba(0,0,0,0.35)`);
+    shadow.addColorStop(1, `rgba(0,0,0,0.43)`);
     ctx.fillStyle = shadow;
     ctx.fillRect(0, 0, size, size);
 
-    // ── 7. Primary specular (головний відблиск) ─────────────────
+    // 8. Main specular highlight — large bright top-left (crystal ball signature)
     const hl1 = ctx.createRadialGradient(
-      cx - r * 0.30, cy - r * 0.35, 0,
-      cx - r * 0.12, cy - r * 0.18, r * 0.55
+      cx - r * 0.33, cy - r * 0.38, 0,
+      cx - r * 0.12, cy - r * 0.18, r * 0.53
     );
-    hl1.addColorStop(0,   'rgba(255,255,255,0.70)');
-    hl1.addColorStop(0.15,'rgba(255,255,255,0.40)');
-    hl1.addColorStop(0.4, 'rgba(255,255,255,0.07)');
-    hl1.addColorStop(1,   'transparent');
+    hl1.addColorStop(0,    'rgba(255,255,255,0.84)');
+    hl1.addColorStop(0.10, 'rgba(255,255,255,0.54)');
+    hl1.addColorStop(0.30, 'rgba(255,255,255,0.10)');
+    hl1.addColorStop(1,    'transparent');
     ctx.fillStyle = hl1;
     ctx.fillRect(0, 0, size, size);
 
-    // ── 8. Secondary specular (менший, знизу) ──────────────────
-    const hl2 = ctx.createRadialGradient(
-      cx + r * 0.28, cy + r * 0.30, 0,
-      cx + r * 0.28, cy + r * 0.30, r * 0.22
-    );
-    hl2.addColorStop(0,   'rgba(255,255,255,0.12)');
+    // 9. Secondary specular (bottom-right, subtle)
+    const hl2 = ctx.createRadialGradient(cx+r*0.28, cy+r*0.30, 0, cx+r*0.28, cy+r*0.30, r*0.22);
+    hl2.addColorStop(0,   'rgba(255,255,255,0.13)');
     hl2.addColorStop(0.5, 'rgba(255,255,255,0.04)');
     hl2.addColorStop(1,   'transparent');
     ctx.fillStyle = hl2;
     ctx.fillRect(0, 0, size, size);
 
-    // ── 9. Glass iridescence (веселковий перелив по краю) ───────
-    const ird = ctx.createRadialGradient(cx, cy, r * 0.88, cx, cy, r);
+    // 10. Iridescent edge shimmer
+    const ird = ctx.createRadialGradient(cx, cy, r * 0.89, cx, cy, r);
     ird.addColorStop(0,    'transparent');
-    ird.addColorStop(0.5,  `rgba(0,212,255,${0.06 + Math.sin(t * 0.8) * 0.03})`);
-    ird.addColorStop(0.75, `rgba(244,63,143,${0.04 + Math.cos(t * 0.6) * 0.02})`);
-    ird.addColorStop(1,    `rgba(200,255,100,0.05)`);
+    ird.addColorStop(0.45, `rgba(80,200,255,${0.045 + Math.sin(t * 0.72) * 0.022})`);
+    ird.addColorStop(0.72, `rgba(255,160,200,${0.035 + Math.cos(t * 0.53) * 0.018})`);
+    ird.addColorStop(1,    `rgba(160,255,130,0.025)`);
     ctx.fillStyle = ird;
     ctx.fillRect(0, 0, size, size);
 
     ctx.restore();
   }
 
+  // ── Golden bronze stand (main orb only) ───────────────────────
+  function drawBase(t) {
+    if (!isMain) return;
+    const ballBottom = cy + r;
+    const neckY  = ballBottom + 3;
+    const neckH  = size * 0.082;
+    const plateY = neckY + neckH;
+    const neckW  = r * 0.21;
+    const plateW = r * 0.76;
+    const pulse  = 0.88 + Math.sin(t * 0.55) * 0.07;
+
+    // Cast shadow under sphere
+    const shGrad = ctx.createRadialGradient(cx, ballBottom + 6, 3, cx, ballBottom + 6, r * 0.60);
+    shGrad.addColorStop(0,   'rgba(0,0,0,0.38)');
+    shGrad.addColorStop(0.5, 'rgba(0,0,0,0.16)');
+    shGrad.addColorStop(1,   'transparent');
+    ctx.fillStyle = shGrad;
+    ctx.beginPath();
+    ctx.ellipse(cx, ballBottom + 6, r * 0.60, r * 0.12, 0, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Neck
+    const neckGrad = ctx.createLinearGradient(cx - plateW, neckY, cx + plateW, neckY);
+    neckGrad.addColorStop(0,    `rgba(48,30,4,${0.88 * pulse})`);
+    neckGrad.addColorStop(0.18, `rgba(155,108,24,${0.92 * pulse})`);
+    neckGrad.addColorStop(0.50, `rgba(238,188,62,${pulse})`);
+    neckGrad.addColorStop(0.82, `rgba(155,108,24,${0.92 * pulse})`);
+    neckGrad.addColorStop(1,    `rgba(48,30,4,${0.88 * pulse})`);
+    ctx.save();
+    ctx.beginPath();
+    ctx.moveTo(cx - neckW, neckY);
+    ctx.quadraticCurveTo(cx, neckY + neckH * 0.5, cx - plateW * 0.54, neckY + neckH);
+    ctx.lineTo(cx + plateW * 0.54, neckY + neckH);
+    ctx.quadraticCurveTo(cx, neckY + neckH * 0.5, cx + neckW, neckY);
+    ctx.closePath();
+    ctx.fillStyle = neckGrad;
+    ctx.fill();
+
+    // Connector ring at top of neck
+    const connGrad = ctx.createLinearGradient(cx - neckW * 1.2, neckY - 2, cx + neckW * 1.2, neckY + 3);
+    connGrad.addColorStop(0,   'rgba(75,48,7,0.9)');
+    connGrad.addColorStop(0.5, 'rgba(255,212,68,0.95)');
+    connGrad.addColorStop(1,   'rgba(75,48,7,0.9)');
+    ctx.beginPath();
+    ctx.ellipse(cx, neckY + 1, neckW * 1.14, neckH * 0.10, 0, 0, Math.PI * 2);
+    ctx.fillStyle = connGrad;
+    ctx.fill();
+
+    // Base plate (wide ellipse)
+    const plateGrad = ctx.createLinearGradient(cx - plateW, plateY, cx + plateW, plateY);
+    plateGrad.addColorStop(0,    'rgba(42,26,4,0.92)');
+    plateGrad.addColorStop(0.22, 'rgba(160,112,26,0.96)');
+    plateGrad.addColorStop(0.50, 'rgba(242,198,72,1.0)');
+    plateGrad.addColorStop(0.78, 'rgba(160,112,26,0.96)');
+    plateGrad.addColorStop(1,    'rgba(42,26,4,0.92)');
+    const plateH = size * 0.038;
+    ctx.beginPath();
+    ctx.ellipse(cx, plateY + plateH * 0.28, plateW, plateH * 0.84, 0, 0, Math.PI * 2);
+    ctx.fillStyle = plateGrad;
+    ctx.fill();
+
+    // Sheen highlight on plate
+    ctx.beginPath();
+    ctx.ellipse(cx, plateY + plateH * 0.10, plateW * 0.70, plateH * 0.20, 0, 0, Math.PI * 2);
+    ctx.fillStyle = `rgba(255,232,115,${0.18 * pulse})`;
+    ctx.fill();
+    ctx.restore();
+  }
+
+  // ── Sparkles around orb (outer) ───────────────────────────────
+  const sparkles = isMain ? Array.from({ length: 10 }, (_, i) => ({
+    angle:        (i / 10) * Math.PI * 2 + Math.random() * 0.4,
+    orbitR:       r * (1.14 + Math.random() * 0.38),
+    speed:        (Math.random() * 0.007 + 0.002) * (Math.random() > 0.5 ? 1 : -1),
+    size:         Math.random() * 2.2 + 0.7,
+    brightness:   Math.random() * 0.55 + 0.4,
+    twinkle:      Math.random() * Math.PI * 2,
+    twinkleSpeed: Math.random() * 0.07 + 0.025,
+  })) : [];
+
+  function drawSparkles() {
+    sparkles.forEach(sp => {
+      sp.angle   += sp.speed;
+      sp.twinkle += sp.twinkleSpeed;
+      const bright = sp.brightness * (0.5 + Math.sin(sp.twinkle) * 0.5);
+      if (bright < 0.06) return;
+      const sx = cx + Math.cos(sp.angle) * sp.orbitR;
+      const sy = cy + Math.sin(sp.angle) * sp.orbitR * 0.82;
+      const len = sp.size * (1 + bright * 1.4);
+      ctx.save();
+      ctx.globalAlpha = bright;
+      ctx.strokeStyle = `rgba(255,225,120,${bright})`;
+      ctx.lineWidth = sp.size * 0.5;
+      ctx.lineCap   = 'round';
+      ctx.beginPath(); ctx.moveTo(sx, sy - len); ctx.lineTo(sx, sy + len); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(sx - len, sy); ctx.lineTo(sx + len, sy); ctx.stroke();
+      const core = ctx.createRadialGradient(sx, sy, 0, sx, sy, sp.size * 2);
+      core.addColorStop(0,   `rgba(255,240,160,${bright * 0.9})`);
+      core.addColorStop(0.3, rgba(color, bright * 0.5));
+      core.addColorStop(1,   'transparent');
+      ctx.fillStyle = core;
+      ctx.beginPath(); ctx.arc(sx, sy, sp.size * 2, 0, Math.PI * 2); ctx.fill();
+      ctx.restore();
+    });
+  }
+
   function draw() {
     const t = phase * 0.016;
     ctx.clearRect(0, 0, size, size);
-
-    // Зовнішні ефекти (до кліпу)
     drawOuterAura();
-    if (isMain) drawRays(t);
-
-    // Сам шар
     drawOrb(t);
-
-    // Іскри навколо (після шара)
-    if (isMain) drawSparkles(t);
+    drawBase(t);
+    if (isMain) drawSparkles();
   }
 
   function tick() {
     phase++;
-    color.r = lerp(color.r, targetColor.r, 0.030);
-    color.g = lerp(color.g, targetColor.g, 0.030);
-    color.b = lerp(color.b, targetColor.b, 0.030);
+    color.r = lerp(color.r, targetColor.r, 0.025);
+    color.g = lerp(color.g, targetColor.g, 0.025);
+    color.b = lerp(color.b, targetColor.b, 0.025);
     draw();
     raf = requestAnimationFrame(tick);
   }
 
   function setColor(type) {
-    if (type === 'yes')        targetColor = { r: 0,   g: 210, b: 130 };
-    else if (type === 'no')    targetColor = { r: 210, g: 35,  b: 85  };
-    else if (type === 'maybe') targetColor = { r: 210, g: 165, b: 15  };
-    else                       targetColor = { r: 139, g: 61,  b: 255 };
+    if (type === 'yes')        targetColor = { r: 70,  g: 220, b: 120 };
+    else if (type === 'no')    targetColor = { r: 220, g: 50,  b: 80  };
+    else if (type === 'maybe') targetColor = { r: 245, g: 180, b: 50  };
+    else                       targetColor = { r: 240, g: 170, b: 42  };
   }
 
   tick();
@@ -418,10 +459,10 @@ function buildOrbParticles() {
   const p = document.createElement('div');
   p.className = 'orb-particles';
   const positions = [
-    { top: '0%',   left: '50%',  delay: '0s',    color: 'rgba(192,132,252,0.9)' },
-    { top: '50%',  left: '100%', delay: '-2.7s', color: 'rgba(0,212,255,0.8)' },
-    { top: '100%', left: '50%',  delay: '-5.3s', color: 'rgba(244,63,143,0.8)' },
-    { top: '50%',  left: '0%',   delay: '-8s',   color: 'rgba(245,200,66,0.7)' },
+    { top: '0%',   left: '50%',  delay: '0s',    color: 'rgba(245,200,70,0.9)' },
+    { top: '50%',  left: '100%', delay: '-2.7s', color: 'rgba(255,230,100,0.8)' },
+    { top: '100%', left: '50%',  delay: '-5.3s', color: 'rgba(220,165,40,0.8)' },
+    { top: '50%',  left: '0%',   delay: '-8s',   color: 'rgba(255,215,60,0.7)' },
   ];
   positions.forEach(pos => {
     const dot = document.createElement('div');
