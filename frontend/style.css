@@ -302,8 +302,7 @@ body.keyboard-open .question-section {
   position: relative;
   z-index: 3;
   border-radius: 50%;
-  transition: filter 0.8s ease;
-  filter: drop-shadow(0 0 18px hsla(300,100%,70%,0.65)) drop-shadow(0 0 40px hsla(300,100%,55%,0.35));
+  transition: filter 1.2s ease;
 }
 
 .orb-ring {

@@ -1,4 +1,5 @@
 /* ─── Oracle Bot — Cosmic Edition ───────────────────────────── */
+import * as THREE from 'three';
 
 const tg = window.Telegram?.WebApp;
 
@@ -86,307 +87,179 @@ function createStars(container, count = 80) {
 }
 document.querySelectorAll('.stars-bg').forEach(c => createStars(c));
 
-// ─── Plasma Orb Canvas ──────────────────────────────────────────
+// ─── 3D Plasma Orb (Three.js + GLSL) ───────────────────────────
 function OrbCanvas(canvas, size = 280, isMain = false) {
-  const dpr = Math.min(window.devicePixelRatio || 1, 2);
-  canvas.width  = size * dpr;
-  canvas.height = size * dpr;
-  canvas.style.width  = size + 'px';
-  canvas.style.height = size + 'px';
+  // ── WebGL Renderer ───────────────────────────────────────────
+  const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: true });
+  renderer.setSize(size, size);
+  renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+  renderer.setClearColor(0x000000, 0);
 
-  const ctx = canvas.getContext('2d');
-  ctx.scale(dpr, dpr);
+  const scene  = new THREE.Scene();
+  const camera = new THREE.PerspectiveCamera(45, 1, 0.01, 100);
+  camera.position.z = 3.2;
 
-  const cx = size / 2, cy = size / 2;
-  const r  = size * 0.41;
+  // ── GLSL: Plasma shader (sine-wave based, no noise library) ──
+  const VS = /* glsl */`
+    varying vec3 vPos;
+    varying vec3 vNormal;
+    void main() {
+      vPos    = position;
+      vNormal = normalize(normalMatrix * normal);
+      gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+    }
+  `;
 
-  let phase = 0;
-  let targetHue = 295;    // default: purple-pink
-  let currentHue = 295;
-  let raf;
+  const FS = /* glsl */`
+    precision highp float;
+    uniform float uTime;
+    uniform float uHue;
+    varying vec3 vPos;
+    varying vec3 vNormal;
 
-  // ── Plasma streams (Lissajous curves that evolve over time) ───
-  const streamCount = isMain ? 7 : 3;
-  const streams = Array.from({ length: streamCount }, (_, i) => ({
-    a:  1.5 + i * 0.6,
-    b:  2.2 + i * 0.4,
-    p:  Math.random() * Math.PI * 2,
-    q:  Math.random() * Math.PI * 2,
-    sp: (0.007 + Math.random() * 0.006) * (i % 2 ? 1 : -1),
-    sq: (0.005 + Math.random() * 0.005) * (i % 2 ? -1 : 1),
-    ri: 0.50 + Math.random() * 0.38,
-    w:  isMain ? (3 + Math.random() * 5) : (1.5 + Math.random() * 2.5),
-    hd: i * 22,
-  }));
+    vec3 hsl2rgb(float h, float s, float l) {
+      float c  = (1.0 - abs(2.0*l - 1.0)) * s;
+      float h6 = h * 6.0;
+      float x  = c * (1.0 - abs(mod(h6, 2.0) - 1.0));
+      float m  = l - c * 0.5;
+      vec3 rgb;
+      if      (h6 < 1.0) rgb = vec3(c, x, 0.0);
+      else if (h6 < 2.0) rgb = vec3(x, c, 0.0);
+      else if (h6 < 3.0) rgb = vec3(0.0, c, x);
+      else if (h6 < 4.0) rgb = vec3(0.0, x, c);
+      else if (h6 < 5.0) rgb = vec3(x, 0.0, c);
+      else               rgb = vec3(c, 0.0, x);
+      return clamp(rgb + m, 0.0, 1.0);
+    }
 
-  // ── Smoke / energy particles ───────────────────────────────────
-  const pCount = isMain ? 100 : 25;
-  const particles = Array.from({ length: pCount }, () => {
-    const a = Math.random() * Math.PI * 2;
-    const d = Math.sqrt(Math.random()) * r * 0.80;
-    return {
-      x:  cx + Math.cos(a) * d,
-      y:  cy + Math.sin(a) * d,
-      vx: (Math.random() - 0.5) * 0.70,
-      vy: (Math.random() - 0.5) * 0.55,
-      life: Math.random(),
-      maxLife: 0.8 + Math.random() * 1.8,
-      size: 1.5 + Math.random() * (isMain ? 4 : 2),
-      hd:  Math.random() * 70 - 35,
-    };
+    float plasma(vec3 p, float t) {
+      float v = 0.0;
+      v += sin(p.x * 3.8 + t * 0.72);
+      v += sin(p.y * 4.5 - t * 0.58 + p.x * 2.1);
+      v += sin((p.x + p.z) * 3.2 + t * 0.65);
+      v += sin(length(p.xy) * 5.5 - t * 0.90);
+      v += sin(p.z * 4.0 + t * 0.44 + p.y * 1.7);
+      v += sin((p.x - p.y + p.z * 0.6) * 4.2 - t * 0.36);
+      return v / 6.0 * 0.5 + 0.5;
+    }
+
+    void main() {
+      float v  = plasma(vPos * 1.7, uTime);
+      float h1 = uHue;
+      float h2 = fract(uHue + 0.08);
+      float h3 = fract(uHue + 0.17);
+
+      vec3 col = mix(hsl2rgb(h1, 1.0, 0.44), hsl2rgb(h2, 1.0, 0.60), v);
+      col = mix(col, hsl2rgb(h3, 1.0, 0.80), pow(v, 2.6) * 0.60);
+
+      // Core glow — brighter toward center
+      float core = max(0.0, 1.0 - length(vPos) * 1.1);
+      col += hsl2rgb(fract(h1 + 0.04), 0.85, 0.88) * core * core * 0.55;
+
+      // Fresnel rim — neon edge glow
+      float fres = pow(1.0 - abs(dot(normalize(vNormal), vec3(0.0, 0.0, 1.0))), 2.0);
+      col += hsl2rgb(fract(h1 + 0.12), 1.0, 0.82) * fres * 1.0;
+
+      gl_FragColor = vec4(col, 0.92);
+    }
+  `;
+
+  const plasmaUniforms = { uTime: { value: 0.0 }, uHue: { value: 0.82 } };
+  const plasmaInner = new THREE.Mesh(
+    new THREE.SphereGeometry(0.97, isMain ? 64 : 32, isMain ? 64 : 32),
+    new THREE.ShaderMaterial({
+      uniforms: plasmaUniforms, vertexShader: VS, fragmentShader: FS,
+      side: THREE.BackSide, transparent: true,
+    })
+  );
+  scene.add(plasmaInner);
+
+  // ── Glass shell (barely-visible surface with sheen) ───────────
+  const glassMesh = new THREE.Mesh(
+    new THREE.SphereGeometry(1.0, 64, 64),
+    new THREE.MeshStandardMaterial({
+      color: 0xddeeff, roughness: 0.0, metalness: 0.12,
+      transparent: true, opacity: 0.07,
+    })
+  );
+  scene.add(glassMesh);
+
+  // ── Specular highlight blobs (key glass marker) ───────────────
+  const hlMat = new THREE.MeshBasicMaterial({
+    color: 0xffffff, transparent: true, opacity: 0.55,
+    blending: THREE.AdditiveBlending, depthWrite: false,
   });
+  const hl1 = new THREE.Mesh(new THREE.SphereGeometry(0.175, 12, 12), hlMat);
+  hl1.position.set(-0.37, 0.43, 0.88);
+  scene.add(hl1);
+  const hl2 = new THREE.Mesh(
+    new THREE.SphereGeometry(0.07, 8, 8),
+    new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.28, blending: THREE.AdditiveBlending, depthWrite: false })
+  );
+  hl2.position.set(0.30, -0.33, 0.90);
+  scene.add(hl2);
 
-  // ── Outer glow ─────────────────────────────────────────────────
-  function drawOuterGlow(t) {
-    const h   = currentHue;
-    const pls = 0.75 + Math.sin(t * 1.4) * 0.25;
-    // 4 concentric glow rings — neon saturated
-    [
-      { rr: r * 2.1,  op: 0.13 * pls },
-      { rr: r * 1.65, op: 0.22 * pls },
-      { rr: r * 1.28, op: 0.34 * pls },
-      { rr: r * 1.08, op: 0.42 * pls },
-    ].forEach(g => {
-      const ag = ctx.createRadialGradient(cx, cy, r * 0.7, cx, cy, g.rr);
-      ag.addColorStop(0,   `hsla(${h},100%,68%,${g.op})`);
-      ag.addColorStop(0.5, `hsla(${h},100%,60%,${g.op * 0.4})`);
-      ag.addColorStop(1,   'transparent');
-      ctx.fillStyle = ag;
-      ctx.beginPath();
-      ctx.arc(cx, cy, g.rr, 0, Math.PI * 2);
-      ctx.fill();
+  // ── Particle cloud (floating inside sphere) ───────────────────
+  let pts = null, ptMat = null;
+  if (isMain) {
+    const N   = 380;
+    const pos = new Float32Array(N * 3);
+    for (let i = 0; i < N; i++) {
+      const th = Math.random() * Math.PI * 2;
+      const ph = Math.acos(2 * Math.random() - 1);
+      const rr = Math.cbrt(Math.random()) * 0.88;
+      pos[i*3]   = rr * Math.sin(ph) * Math.cos(th);
+      pos[i*3+1] = rr * Math.sin(ph) * Math.sin(th);
+      pos[i*3+2] = rr * Math.cos(ph);
+    }
+    const ptGeo = new THREE.BufferGeometry();
+    ptGeo.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+    ptMat = new THREE.PointsMaterial({
+      color: 0xffffff, size: 0.022, transparent: true, opacity: 0.70,
+      blending: THREE.AdditiveBlending, depthWrite: false,
     });
-    // Hot bright rim
-    const rim = ctx.createRadialGradient(cx, cy, r * 0.90, cx, cy, r * 1.12);
-    rim.addColorStop(0,   `hsla(${(h + 30) % 360},100%,85%,${0.55 * pls})`);
-    rim.addColorStop(0.6, `hsla(${h},100%,70%,${0.20 * pls})`);
-    rim.addColorStop(1,   'transparent');
-    ctx.fillStyle = rim;
-    ctx.beginPath();
-    ctx.arc(cx, cy, r * 1.12, 0, Math.PI * 2);
-    ctx.fill();
+    pts = new THREE.Points(ptGeo, ptMat);
+    scene.add(pts);
   }
 
-  // ── Interior plasma ────────────────────────────────────────────
-  function drawOrb(t) {
-    ctx.save();
-    ctx.beginPath();
-    ctx.arc(cx, cy, r, 0, Math.PI * 2);
-    ctx.clip();
+  // ── Orbiting point lights inside sphere ───────────────────────
+  const lightDefs = isMain
+    ? [{ sp:  0.82, ph: 0,           tl: 0.40 },
+       { sp: -0.58, ph: 2.09,        tl: -0.38 },
+       { sp:  0.45, ph: 4.19,        tl:  0.72 }]
+    : [{ sp: 0.70,  ph: 0,           tl: 0 }];
+  const lights = lightDefs.map(d => {
+    const l = new THREE.PointLight(0xff00ff, isMain ? 5 : 2.5, 5.5);
+    scene.add(l);
+    return { ...d, light: l };
+  });
+  scene.add(new THREE.AmbientLight(0x110011, 0.6));
 
-    // 1. Dark background (with subtle trail fade if no clearRect)
-    ctx.fillStyle = 'rgba(4,2,22,1)';
-    ctx.fillRect(0, 0, size, size);
-
-    // 2. Deep inner color base (radial, sphere-like depth)
-    const base = ctx.createRadialGradient(cx - r * 0.10, cy - r * 0.10, r * 0.02, cx, cy, r);
-    base.addColorStop(0,    `hsla(${(currentHue + 40) % 360},60%,18%,1)`);
-    base.addColorStop(0.45, `hsla(${currentHue},80%,10%,1)`);
-    base.addColorStop(1,    `hsla(${currentHue},100%,4%,1)`);
-    ctx.fillStyle = base;
-    ctx.fillRect(0, 0, size, size);
-
-    // 3. Plasma streams (Lissajous + screen blend = neon glow)
-    ctx.save();
-    ctx.globalCompositeOperation = 'screen';
-    streams.forEach(s => {
-      s.p += s.sp;
-      s.q += s.sq;
-
-      const N = 140;
-      const pts = [];
-      for (let i = 0; i <= N; i++) {
-        const ang = (i / N) * Math.PI * 2;
-        pts.push([
-          cx + r * s.ri * Math.sin(s.a * ang + s.p),
-          cy + r * s.ri * 0.80 * Math.sin(s.b * ang + s.q),
-        ]);
-      }
-
-      const h1 = (currentHue + s.hd) % 360;
-      const h2 = (currentHue + s.hd + 45) % 360;
-      const mid = pts[N >> 1];
-      const lg = ctx.createLinearGradient(pts[0][0], pts[0][1], mid[0], mid[1]);
-      lg.addColorStop(0,   `hsla(${h1},100%,72%,0.0)`);
-      lg.addColorStop(0.15,`hsla(${h1},100%,78%,0.55)`);
-      lg.addColorStop(0.5, `hsla(${h2},100%,88%,0.85)`);
-      lg.addColorStop(0.85,`hsla(${h1},100%,78%,0.55)`);
-      lg.addColorStop(1,   `hsla(${h1},100%,72%,0.0)`);
-
-      ctx.beginPath();
-      ctx.moveTo(pts[0][0], pts[0][1]);
-      for (let i = 1; i < pts.length - 1; i++) {
-        const mx = (pts[i][0] + pts[i + 1][0]) / 2;
-        const my = (pts[i][1] + pts[i + 1][1]) / 2;
-        ctx.quadraticCurveTo(pts[i][0], pts[i][1], mx, my);
-      }
-      ctx.strokeStyle = lg;
-      ctx.lineWidth   = s.w;
-      ctx.lineCap     = 'round';
-      ctx.lineJoin    = 'round';
-      ctx.shadowColor = `hsla(${h1},100%,70%,0.9)`;
-      ctx.shadowBlur  = s.w * 4;
-      ctx.stroke();
-      ctx.shadowBlur  = 0;
-    });
-    ctx.restore();
-
-    // 4. Energy particles (screen blend)
-    ctx.save();
-    ctx.globalCompositeOperation = 'screen';
-    particles.forEach(p => {
-      p.x  += p.vx + Math.sin(t * 0.55 + p.y * 0.014) * 0.30;
-      p.y  += p.vy + Math.cos(t * 0.48 + p.x * 0.014) * 0.22;
-      p.life += 0.007;
-      const dx = p.x - cx, dy = p.y - cy;
-      if (Math.sqrt(dx * dx + dy * dy) > r * 0.87 || p.life > p.maxLife) {
-        const a = Math.random() * Math.PI * 2;
-        const d = Math.sqrt(Math.random()) * r * 0.72;
-        p.x = cx + Math.cos(a) * d;
-        p.y = cy + Math.sin(a) * d;
-        p.vx = (Math.random() - 0.5) * 0.70;
-        p.vy = (Math.random() - 0.5) * 0.55;
-        p.life = 0;
-      }
-      const alpha = Math.sin(p.life / p.maxLife * Math.PI) * 0.88;
-      if (alpha < 0.05) return;
-      const ph = (currentHue + p.hd) % 360;
-      const pg = ctx.createRadialGradient(p.x, p.y, 0, p.x, p.y, p.size * 5);
-      pg.addColorStop(0,    `hsla(${ph},100%,90%,${alpha})`);
-      pg.addColorStop(0.35, `hsla(${ph},100%,68%,${alpha * 0.4})`);
-      pg.addColorStop(1,    'transparent');
-      ctx.fillStyle = pg;
-      ctx.beginPath();
-      ctx.arc(p.x, p.y, p.size * 5, 0, Math.PI * 2);
-      ctx.fill();
-    });
-    ctx.restore();
-
-    // 5. Inner core pulse
-    ctx.save();
-    ctx.globalCompositeOperation = 'screen';
-    const corePulse = 0.12 + Math.sin(t * 2.2) * 0.06;
-    const cg = ctx.createRadialGradient(cx, cy, 0, cx, cy, r * 0.55);
-    cg.addColorStop(0,   `hsla(${(currentHue + 50) % 360},80%,85%,${corePulse})`);
-    cg.addColorStop(0.5, `hsla(${currentHue},100%,65%,${corePulse * 0.4})`);
-    cg.addColorStop(1,   'transparent');
-    ctx.fillStyle = cg;
-    ctx.fillRect(0, 0, size, size);
-    ctx.restore();
-
-    // 6. Caustic glass edge (bright hot rim at sphere boundary)
-    const caus = ctx.createRadialGradient(cx, cy, r * 0.78, cx, cy, r);
-    caus.addColorStop(0,    'transparent');
-    caus.addColorStop(0.78, `hsla(${currentHue},100%,65%,0.06)`);
-    caus.addColorStop(0.90, `hsla(${(currentHue + 25) % 360},100%,80%,0.16)`);
-    caus.addColorStop(0.97, 'rgba(255,255,255,0.22)');
-    caus.addColorStop(1,    'rgba(8,4,30,0.62)');
-    ctx.fillStyle = caus;
-    ctx.fillRect(0, 0, size, size);
-
-    // 7. Depth shadow
-    const sh = ctx.createRadialGradient(cx + r * 0.20, cy + r * 0.25, r * 0.12, cx, cy, r);
-    sh.addColorStop(0, 'transparent');
-    sh.addColorStop(1, 'rgba(0,0,0,0.55)');
-    ctx.fillStyle = sh;
-    ctx.fillRect(0, 0, size, size);
-
-    // 8. Main glass specular — big bright top-left
-    const hl1 = ctx.createRadialGradient(
-      cx - r * 0.35, cy - r * 0.40, 0,
-      cx - r * 0.10, cy - r * 0.16, r * 0.54
-    );
-    hl1.addColorStop(0,    'rgba(255,255,255,0.90)');
-    hl1.addColorStop(0.08, 'rgba(255,255,255,0.62)');
-    hl1.addColorStop(0.28, 'rgba(255,255,255,0.12)');
-    hl1.addColorStop(1,    'transparent');
-    ctx.fillStyle = hl1;
-    ctx.fillRect(0, 0, size, size);
-
-    // 9. Secondary specular bottom-right
-    const hl2 = ctx.createRadialGradient(cx + r * 0.29, cy + r * 0.31, 0, cx + r * 0.29, cy + r * 0.31, r * 0.21);
-    hl2.addColorStop(0,   'rgba(255,255,255,0.16)');
-    hl2.addColorStop(0.5, 'rgba(255,255,255,0.05)');
-    hl2.addColorStop(1,   'transparent');
-    ctx.fillStyle = hl2;
-    ctx.fillRect(0, 0, size, size);
-
-    // 10. Iridescent shimmer on edge
-    const ird = ctx.createRadialGradient(cx, cy, r * 0.88, cx, cy, r);
-    ird.addColorStop(0,    'transparent');
-    ird.addColorStop(0.40, `hsla(${(currentHue - 40 + 360) % 360},100%,80%,${0.06 + Math.sin(t * 0.72) * 0.03})`);
-    ird.addColorStop(0.72, `hsla(${(currentHue + 60) % 360},100%,85%,${0.04 + Math.cos(t * 0.52) * 0.02})`);
-    ird.addColorStop(1,    'rgba(255,200,150,0.02)');
-    ctx.fillStyle = ird;
-    ctx.fillRect(0, 0, size, size);
-
-    ctx.restore();
-  }
-
-  // ── Outer sparkle stars ────────────────────────────────────────
-  const sparkles = isMain ? Array.from({ length: 12 }, (_, i) => ({
-    angle:  (i / 12) * Math.PI * 2 + Math.random() * 0.5,
-    orbitR: r * (1.15 + Math.random() * 0.42),
-    speed:  (Math.random() * 0.008 + 0.002) * (Math.random() > 0.5 ? 1 : -1),
-    size:   Math.random() * 2.5 + 0.8,
-    twinkle:      Math.random() * Math.PI * 2,
-    twinkleSpeed: Math.random() * 0.08 + 0.03,
-    hd: Math.random() * 80 - 40,
-  })) : [];
-
-  function drawSparkles() {
-    sparkles.forEach(sp => {
-      sp.angle   += sp.speed;
-      sp.twinkle += sp.twinkleSpeed;
-      const bright = 0.5 + Math.sin(sp.twinkle) * 0.5;
-      if (bright < 0.1) return;
-      const sx = cx + Math.cos(sp.angle) * sp.orbitR;
-      const sy = cy + Math.sin(sp.angle) * sp.orbitR * 0.85;
-      const len = sp.size * (1.2 + bright * 1.6);
-      const h = (currentHue + sp.hd) % 360;
-      ctx.save();
-      ctx.globalAlpha = bright;
-      ctx.strokeStyle = `hsla(${h},100%,85%,1)`;
-      ctx.lineWidth = sp.size * 0.5;
-      ctx.lineCap   = 'round';
-      ctx.shadowColor = `hsla(${h},100%,75%,0.9)`;
-      ctx.shadowBlur = sp.size * 4;
-      ctx.beginPath(); ctx.moveTo(sx, sy - len); ctx.lineTo(sx, sy + len); ctx.stroke();
-      ctx.beginPath(); ctx.moveTo(sx - len, sy); ctx.lineTo(sx + len, sy); ctx.stroke();
-      ctx.shadowBlur = 0;
-      const cg = ctx.createRadialGradient(sx, sy, 0, sx, sy, sp.size * 3);
-      cg.addColorStop(0,   `hsla(${h},100%,95%,${bright})`);
-      cg.addColorStop(0.4, `hsla(${h},100%,75%,${bright * 0.4})`);
-      cg.addColorStop(1,   'transparent');
-      ctx.fillStyle = cg;
-      ctx.beginPath(); ctx.arc(sx, sy, sp.size * 3, 0, Math.PI * 2); ctx.fill();
-      ctx.restore();
-    });
-  }
-
-  function draw() {
-    const t = phase * 0.016;
-    ctx.clearRect(0, 0, size, size);
-    drawOuterGlow(t);
-    drawOrb(t);
-    if (isMain) drawSparkles();
-  }
+  // ── Animation ─────────────────────────────────────────────────
+  let currentHue = 0.82, targetHue = 0.82, raf;
 
   function tick() {
-    phase++;
-    currentHue += (targetHue - currentHue) * 0.018;
-    draw();
     raf = requestAnimationFrame(tick);
-  }
+    const t = Date.now() * 0.001;
 
-  function setColor(type) {
-    if (type === 'yes')        targetHue = 145;  // green
-    else if (type === 'no')    targetHue = 355;  // red
-    else if (type === 'maybe') targetHue = 45;   // gold
-    else                       targetHue = 295;  // purple-pink (default)
-  }
+    currentHue += (targetHue - currentHue) * 0.018;
+    plasmaUniforms.uTime.value = t;
+    plasmaUniforms.uHue.value  = currentHue;
 
+    lights.forEach((l, i) => {
+      const ang = t * l.sp + l.ph;
+      l.light.color.setHSL(currentHue + i * 0.06, 1.0, 0.68);
+      l.light.position.set(Math.cos(ang) * 0.72, Math.sin(ang * 1.35 + l.tl) * 0.50, Math.sin(ang) * 0.72);
+    });
+    if (pts)   { pts.rotation.y = t * 0.10; pts.rotation.x = Math.sin(t * 0.08) * 0.14; }
+    if (ptMat) { ptMat.color.setHSL(currentHue + 0.03, 0.75, 0.92); }
+
+    glassMesh.rotation.y = Math.sin(t * 0.12) * 0.04;
+    renderer.render(scene, camera);
+  }
   tick();
+
+
   return { setColor, stop: () => cancelAnimationFrame(raf) };
 }
 
