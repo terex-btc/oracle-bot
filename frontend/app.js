@@ -3,11 +3,11 @@
 const tg = window.Telegram?.WebApp;
 
 function applyTopInset() {
-  // Telegram надає safeAreaInset і contentSafeAreaInset в fullscreen
-  const tgTop = tg?.safeAreaInset?.top ?? tg?.contentSafeAreaInset?.top ?? 0;
-  // Також беремо CSS env() як fallback
-  const cssTop = parseInt(getComputedStyle(document.documentElement).getPropertyValue('--tg-viewport-stable-height') || '0');
-  const top = tgTop > 0 ? tgTop : 0;
+  const deviceTop  = tg?.safeAreaInset?.top        ?? 0;
+  const contentTop = tg?.contentSafeAreaInset?.top ?? 0;
+  const sum = deviceTop + contentTop;
+  // В fullscreen сума може бути 0 до першого події — ставимо мінімум 62px
+  const top = tg?.isFullscreen ? Math.max(sum, 62) : Math.max(sum, 0);
   document.documentElement.style.setProperty('--tg-safe-top', top + 'px');
 }
 
@@ -33,9 +33,9 @@ if (tg) {
 // Fallback: якщо Telegram не дав інсет — беремо з CSS env()
 document.addEventListener('DOMContentLoaded', () => {
   const current = getComputedStyle(document.documentElement).getPropertyValue('--tg-safe-top').trim();
-  if (!current || current === '0px') {
-    // iPhone notch ~44px, Dynamic Island ~59px — ставимо 52px як безпечний fallback
-    document.documentElement.style.setProperty('--tg-safe-top', '52px');
+  const currentVal = parseInt(current) || 0;
+  if (currentVal < 62) {
+    document.documentElement.style.setProperty('--tg-safe-top', '62px');
   }
 });
 

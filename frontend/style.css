@@ -259,13 +259,14 @@ html, body {
   position: relative;
   z-index: 2;
   min-height: 0;
-  overflow: hidden;
+  overflow: visible;
   max-height: 600px;
   transition: max-height 0.28s ease, opacity 0.25s ease, margin 0.25s ease;
 }
 
 /* Клавіатура відкрита — прибираємо кулю */
 body.keyboard-open .orb-section {
+  overflow: hidden;
   max-height: 0;
   opacity: 0;
   flex: 0;
