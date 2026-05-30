@@ -301,7 +301,9 @@ body.keyboard-open .question-section {
 #orb-canvas {
   position: relative;
   z-index: 3;
+  border-radius: 50%;
   transition: filter 0.8s ease;
+  filter: drop-shadow(0 0 18px hsla(300,100%,70%,0.65)) drop-shadow(0 0 40px hsla(300,100%,55%,0.35));
 }
 
 .orb-ring {
@@ -333,11 +335,11 @@ body.keyboard-open .question-section {
 
 .orb-glow {
   position: absolute;
-  width: 260px; height: 260px;
+  width: 300px; height: 300px;
   border-radius: 50%;
-  background: radial-gradient(circle, rgba(240,180,48,0.22) 0%, rgba(200,140,30,0.08) 55%, transparent 75%);
+  background: radial-gradient(circle, hsla(300,100%,65%,0.30) 0%, hsla(300,100%,50%,0.12) 50%, transparent 72%);
   z-index: 1;
-  animation: glow-pulse 3.5s ease-in-out infinite;
+  animation: glow-pulse 3s ease-in-out infinite;
   transition: background 0.8s ease;
 }
 
