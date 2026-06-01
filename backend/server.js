@@ -5,7 +5,7 @@ const path       = require('path');
 const https      = require('https');
 const TelegramBot = require('node-telegram-bot-api');
 const { getOracleAnswer } = require('./config/oracleAnswers');
-let getStatus, increment, activatePremium, addBonus, applyReferral, logQuestion, getStats, getUsers, getQuestions;
+let getStatus, increment, activatePremium, addBonus, applyReferral, logQuestion, getUserQuestions, getStats, getUsers, getQuestions;
 try {
   ({ getStatus, increment, setUserInfo, activatePremium, addBonus, applyReferral, logQuestion, getUserQuestions, getStats, getUsers, getQuestions } = require('./services/userService'));
 } catch (e) {
@@ -261,6 +261,20 @@ if (BOT_TOKEN) {
     const payload = msg.successful_payment.invoice_payload;
     if (!payload.startsWith('oracle_')) return;
 
+    // Пакети питань: oracle_pack5_UID / oracle_pack20_UID
+    if (payload.startsWith('oracle_pack')) {
+      const packKey = Object.keys(PACK_CONFIG).find(k => payload.startsWith(`oracle_${k}_`));
+      const pack = packKey ? PACK_CONFIG[packKey] : null;
+      const amount = pack ? pack.questions : 5;
+      const newTotal = addBonus(userId, amount);
+      await bot.sendMessage(msg.chat.id,
+        `🎁 *Пакет питань отримано!*\n\n🔮 *+${amount} питань* додано до твого балансу\n💫 Всього бонусних питань: *${newTotal}*\n\n_Задавай питання — доля чекає!_`,
+        { parse_mode: 'Markdown', reply_markup: { inline_keyboard: [[{ text: '🔮 Відкрити Оракул', web_app: { url: WEBAPP_URL } }]] } }
+      );
+      console.log(`[Pack] userId=${userId} pack=${packKey} amount=${amount} total=${newTotal}`);
+      return;
+    }
+
     // Визначаємо план з payload: oracle_week_UID / oracle_month_UID / oracle_lifetime_UID
     let days = 30;
     if (payload.startsWith('oracle_week_'))     days = 7;
@@ -307,6 +321,11 @@ const PLAN_CONFIG = {
   lifetime: { days: 36500, stars: 2500, title: '⭐ Oracle Premium — Назавжди', desc: 'Безлімітні питання Оракулу назавжди!' },
 };
 
+const PACK_CONFIG = {
+  pack5:  { questions: 5,  stars: 30, title: '🔮 Пакет +5 питань',  desc: '5 додаткових питань Оракулу — без строку дії!' },
+  pack20: { questions: 20, stars: 80, title: '🔮 Пакет +20 питань', desc: '20 додаткових питань Оракулу — без строку дії!' },
+};
+
 async function sendPremiumInvoice(chatId, userId, plan = 'month') {
   const p = PLAN_CONFIG[plan] || PLAN_CONFIG.month;
   const invoiceData = {
@@ -347,7 +366,9 @@ api.get('/user/:userId/status', (req, res) => {
 api.post('/user/:userId/invoice', async (req, res) => {
   const { userId } = req.params;
   const plan = req.body?.plan || 'month';
-  const p = PLAN_CONFIG[plan] || PLAN_CONFIG.month;
+  const isPack = plan.startsWith('pack');
+  const p = isPack ? PACK_CONFIG[plan] : (PLAN_CONFIG[plan] || PLAN_CONFIG.month);
+  if (!p) return res.status(400).json({ error: 'Unknown plan' });
   try {
     const result = await tgApi('createInvoiceLink', {
       title:       p.title,
@@ -357,7 +378,7 @@ api.post('/user/:userId/invoice', async (req, res) => {
       prices:      [{ label: p.title, amount: p.stars }],
     });
     if (result.ok) {
-      res.json({ url: result.result, plan, stars: p.stars, days: p.days });
+      res.json({ url: result.result, plan, stars: p.stars, questions: p.questions, days: p.days });
     } else {
       res.status(500).json({ error: result.description });
     }
@@ -370,6 +391,17 @@ api.post('/user/sync', (req, res) => {
   const { userId, username, firstName } = req.body;
   if (userId && userId !== 'guest') setUserInfo(userId, { username, firstName });
   res.json({ ok: true });
+});
+
+api.get('/user/:userId/history', async (req, res) => {
+  const { userId } = req.params;
+  if (!userId || userId === 'guest') return res.json([]);
+  try {
+    const questions = await getUserQuestions(userId);
+    res.json(questions);
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
 });
 
 api.post('/ask', (req, res) => {

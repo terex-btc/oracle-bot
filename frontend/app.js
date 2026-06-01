@@ -337,6 +337,13 @@ const LANGS = {
     featUnlimited:    '✓ Безлимитные вопросы',
     featCategories:   '✓ Все категории',
     featPriority:     '✓ Приоритет судьбы',
+    packDivider:      'или пополни баланс вопросов',
+    packBtn:          'Купить',
+    historyTitle:     '🔮 Мои вопросы',
+    historyBack:      '← Назад',
+    historyEmpty:     'Ты ещё не задавал вопросов Оракулу',
+    historyLoading:   'Загрузка...',
+    greeting:         name => `${name}, `,
     btnComeBack:      '🌙 Вернуться завтра (бесплатно)',
     langBtn:          '🌐 UA',
   },
@@ -382,6 +389,13 @@ const LANGS = {
     featUnlimited:    '✓ Безлімітні питання',
     featCategories:   '✓ Всі категорії',
     featPriority:     '✓ Пріоритет долі',
+    packDivider:      'або поповни баланс питань',
+    packBtn:          'Купити',
+    historyTitle:     '🔮 Мої питання',
+    historyBack:      '← Назад',
+    historyEmpty:     'Ти ще не ставив питань Оракулу',
+    historyLoading:   'Завантаження...',
+    greeting:         name => `${name}, `,
     btnComeBack:      '🌙 Повернутись завтра (безкоштовно)',
     langBtn:          '🌐 RU',
   },
@@ -397,7 +411,10 @@ function applyLang() {
   const badge = document.querySelector('.oracle-badge');
   if (badge) badge.textContent = L.badge;
   const subtitle = document.querySelector('.oracle-subtitle');
-  if (subtitle) subtitle.textContent = L.subtitle;
+  if (subtitle) {
+    const prefix = tgFirstName ? L.greeting(tgFirstName) : '';
+    subtitle.textContent = prefix + L.subtitle;
+  }
 
   const qi = document.getElementById('question-input');
   if (qi) qi.placeholder = selectedCategory ? (L.catPlaceholders[selectedCategory] || L.placeholder) : L.placeholder;
@@ -447,6 +464,16 @@ function applyLang() {
   if (bcb) bcb.textContent = L.btnComeBack;
   const br = document.getElementById('btn-ref');
   if (br) br.textContent = L.refBtn;
+
+  const pd = document.querySelector('.packs-divider');
+  if (pd) pd.textContent = L.packDivider;
+
+  document.querySelectorAll('.pack-btn').forEach(btn => { btn.textContent = L.packBtn; });
+
+  const ht = document.querySelector('.history-title');
+  if (ht) ht.textContent = L.historyTitle;
+  const hb = document.getElementById('btn-history-back');
+  if (hb) hb.textContent = L.historyBack;
 
   updateCounter();
 }
@@ -694,6 +721,101 @@ document.getElementById('btn-ref')?.addEventListener('click', () => {
       setTimeout(() => { btn.textContent = L.refBtn; }, 2500);
     });
   }
+});
+
+// ─── Pack purchase flow ───────────────────────────────────────────
+async function buyPackFlow(btn, pack) {
+  if (!btn || btn.disabled) return;
+  btn.disabled = true;
+  const orig = btn.textContent;
+  btn.textContent = '⏳...';
+  try {
+    const r = await fetch(`/api/user/${userId}/invoice`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ plan: pack }),
+    });
+    const data = await r.json();
+    if (!data.url) throw new Error(data.error || 'Помилка');
+    if (tg?.openInvoice) {
+      tg.openInvoice(data.url, async (status) => {
+        if (status === 'paid') {
+          await fetchStatus();
+          showScreen('screen-home');
+          orbStatus.textContent = `🎁 +${data.questions} питань додано!`;
+          setTimeout(() => { orbStatus.textContent = LANGS[currentLang].orbDefault; }, 3000);
+        }
+      });
+    } else {
+      window.open(data.url, '_blank');
+    }
+  } catch (e) {
+    alert('Помилка: ' + e.message);
+  } finally {
+    btn.disabled = false;
+    btn.textContent = orig;
+  }
+}
+
+document.querySelectorAll('.pack-btn').forEach(btn => {
+  btn.addEventListener('click', function() {
+    buyPackFlow(this, this.dataset.pack);
+  });
+});
+
+// ─── History screen ───────────────────────────────────────────────
+const COLOR_EMOJI = { yes: '🟢', no: '🔴', maybe: '🟡' };
+const COLOR_LABEL = {
+  ru: { yes: 'ДА', no: 'НЕТ', maybe: 'ВОЗМОЖНО' },
+  ua: { yes: 'ТАК', no: 'НІ',  maybe: 'МОЖЛИВО'  },
+};
+
+async function loadHistory() {
+  if (userId === 'guest') return;
+  const L = LANGS[currentLang];
+  const list = document.getElementById('history-list');
+  const loading = document.getElementById('history-loading');
+  if (loading) loading.textContent = L.historyLoading;
+
+  try {
+    const r = await fetch(`/api/user/${userId}/history`);
+    const questions = await r.json();
+    if (!list) return;
+
+    if (!questions.length) {
+      list.innerHTML = `<div class="history-empty">${L.historyEmpty}</div>`;
+      return;
+    }
+
+    list.innerHTML = questions.map(q => {
+      const date = new Date(q.ts).toLocaleDateString(
+        currentLang === 'ua' ? 'uk' : 'ru',
+        { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }
+      );
+      const emoji = COLOR_EMOJI[q.color] || '⚪';
+      const label = (COLOR_LABEL[currentLang] || COLOR_LABEL.ru)[q.color] || q.verdict || '';
+      return `
+        <div class="history-item history-item-${q.color || 'maybe'}">
+          <div class="history-item-top">
+            <span class="history-item-emoji">${emoji}</span>
+            <span class="history-item-verdict">${label}</span>
+            <span class="history-item-date">${date}</span>
+          </div>
+          <div class="history-item-q">${q.question || ''}</div>
+        </div>`;
+    }).join('');
+  } catch {
+    if (list) list.innerHTML = `<div class="history-empty">Помилка завантаження</div>`;
+  }
+}
+
+document.getElementById('history-btn')?.addEventListener('click', () => {
+  showScreen('screen-history');
+  loadHistory();
+});
+
+document.getElementById('btn-history-back')?.addEventListener('click', () => {
+  showScreen('screen-home');
 });
 
 // Завантажуємо статус при старті
