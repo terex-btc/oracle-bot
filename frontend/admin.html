@@ -1,326 +1,258 @@
 <!DOCTYPE html>
 <html lang="uk">
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Oracle Admin</title>
-  <style>
-    * { box-sizing: border-box; margin: 0; padding: 0; }
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1.0"/>
+<title>🔮 Oracle Admin</title>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+:root{
+  --bg:#07060f;--surf:#110f1e;--surf2:#18162a;--border:#2a2445;
+  --purple:#8b3dff;--purple-dim:rgba(139,61,255,.15);
+  --gold:#f5c842;--green:#22c55e;--red:#ef4444;--yellow:#eab308;
+  --blue:#60a5fa;--pink:#f472b6;
+  --text:#e2ddf5;--muted:#7b6fa0;
+}
+body{background:var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;font-size:14px;min-height:100vh}
 
-    :root {
-      --bg:      #07060f;
-      --surface: #110f1e;
-      --border:  #2a2445;
-      --purple:  #8b3dff;
-      --gold:    #f5c842;
-      --green:   #22c55e;
-      --red:     #ef4444;
-      --yellow:  #eab308;
-      --text:    #e2ddf5;
-      --muted:   #7b6fa0;
-    }
+/* ── Login ─────────────────────────────────────────────────────── */
+#login{display:flex;align-items:center;justify-content:center;min-height:100vh;background:radial-gradient(ellipse at 50% 0%,rgba(139,61,255,.18) 0%,transparent 70%)}
+.login-card{background:var(--surf);border:1px solid var(--border);border-radius:24px;padding:48px 40px;width:360px;display:flex;flex-direction:column;align-items:center;gap:16px;box-shadow:0 0 60px rgba(139,61,255,.12)}
+.login-orb{font-size:52px;line-height:1}
+.login-card h1{font-size:22px;font-weight:700}
+.login-card p{font-size:13px;color:var(--muted);text-align:center}
+.login-card input{width:100%;padding:13px 18px;border-radius:12px;border:1px solid var(--border);background:var(--bg);color:var(--text);font-size:15px;outline:none;transition:border-color .2s}
+.login-card input:focus{border-color:var(--purple)}
+.login-card button{width:100%;padding:13px;border-radius:12px;border:none;background:var(--purple);color:#fff;font-size:15px;font-weight:600;cursor:pointer;transition:opacity .2s}
+.login-card button:hover{opacity:.85}
+.login-err{color:var(--red);font-size:13px;min-height:18px}
 
-    body {
-      background: var(--bg);
-      color: var(--text);
-      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
-      font-size: 14px;
-      min-height: 100vh;
-    }
+/* ── Dashboard layout ──────────────────────────────────────────── */
+#dashboard{display:none;flex-direction:column;min-height:100vh}
 
-    /* ── Login ── */
-    #login {
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      justify-content: center;
-      min-height: 100vh;
-      gap: 16px;
-    }
-    #login h1 { font-size: 24px; }
-    #login .logo { font-size: 48px; margin-bottom: 8px; }
-    #login input {
-      padding: 12px 20px;
-      border-radius: 12px;
-      border: 1px solid var(--border);
-      background: var(--surface);
-      color: var(--text);
-      font-size: 15px;
-      width: 280px;
-      outline: none;
-    }
-    #login input:focus { border-color: var(--purple); }
-    #login button {
-      padding: 12px 40px;
-      border-radius: 12px;
-      border: none;
-      background: var(--purple);
-      color: #fff;
-      font-size: 15px;
-      font-weight: 600;
-      cursor: pointer;
-      width: 280px;
-    }
-    #login button:hover { opacity: .85; }
-    #login .err { color: var(--red); font-size: 13px; }
+/* ── Header ────────────────────────────────────────────────────── */
+header{background:var(--surf);border-bottom:1px solid var(--border);padding:0 24px;height:56px;display:flex;align-items:center;justify-content:space-between;position:sticky;top:0;z-index:20}
+.hdr-left{display:flex;align-items:center;gap:12px}
+.hdr-logo{font-size:26px}
+.hdr-title{font-size:16px;font-weight:700}
+.hdr-clock{font-size:12px;color:var(--muted)}
+.hdr-right{display:flex;align-items:center;gap:10px}
+.db-dot{width:8px;height:8px;border-radius:50%;background:var(--green);display:inline-block}
+.db-dot.offline{background:var(--red)}
+.db-label{font-size:12px;color:var(--muted)}
+.btn-sm{padding:6px 14px;border-radius:8px;border:1px solid var(--border);background:transparent;color:var(--text);font-size:13px;cursor:pointer;transition:all .2s;white-space:nowrap}
+.btn-sm:hover{border-color:var(--purple);color:var(--purple)}
+.btn-logout{border-color:transparent;color:var(--muted)}
+.btn-logout:hover{border-color:var(--red);color:var(--red)}
 
-    /* ── Dashboard ── */
-    #dashboard { display: none; }
+/* ── Refresh progress bar ──────────────────────────────────────── */
+.refresh-track{height:3px;background:var(--border);position:relative;overflow:hidden}
+.refresh-fill{height:100%;background:var(--purple);transition:width 1s linear;width:100%}
 
-    header {
-      background: var(--surface);
-      border-bottom: 1px solid var(--border);
-      padding: 14px 24px;
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      position: sticky;
-      top: 0;
-      z-index: 10;
-    }
-    header h1 { font-size: 17px; display: flex; align-items: center; gap: 8px; }
-    .logout-btn {
-      background: transparent;
-      border: 1px solid var(--border);
-      color: var(--muted);
-      padding: 6px 14px;
-      border-radius: 8px;
-      cursor: pointer;
-      font-size: 13px;
-    }
-    .logout-btn:hover { border-color: var(--red); color: var(--red); }
+/* ── Main content ──────────────────────────────────────────────── */
+main{flex:1;padding:20px 24px;max-width:1500px;margin:0 auto;width:100%}
 
-    .refresh-bar {
-      background: var(--surface);
-      border-bottom: 1px solid var(--border);
-      padding: 8px 24px;
-      display: flex;
-      align-items: center;
-      gap: 12px;
-      font-size: 12px;
-      color: var(--muted);
-    }
-    .refresh-bar span { margin-left: auto; }
-    .refresh-btn {
-      background: transparent;
-      border: 1px solid var(--border);
-      color: var(--text);
-      padding: 4px 12px;
-      border-radius: 6px;
-      cursor: pointer;
-      font-size: 12px;
-    }
-    .refresh-btn:hover { border-color: var(--purple); }
+/* ── Stats row ─────────────────────────────────────────────────── */
+.stats-row{display:grid;grid-template-columns:repeat(6,1fr);gap:14px;margin-bottom:20px}
+@media(max-width:1100px){.stats-row{grid-template-columns:repeat(3,1fr)}}
+@media(max-width:600px){.stats-row{grid-template-columns:repeat(2,1fr)}}
+.stat-card{background:var(--surf);border:1px solid var(--border);border-radius:14px;padding:16px 18px}
+.stat-label{font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.6px;margin-bottom:8px}
+.stat-val{font-size:30px;font-weight:700;line-height:1}
+.stat-card.c-purple .stat-val{color:var(--purple)}
+.stat-card.c-gold .stat-val{color:var(--gold)}
+.stat-card.c-green .stat-val{color:var(--green)}
+.stat-card.c-blue .stat-val{color:var(--blue)}
+.stat-card.c-pink .stat-val{color:var(--pink)}
+.stat-card.c-red .stat-val{color:var(--red)}
 
-    main { padding: 20px 24px; max-width: 1400px; margin: 0 auto; }
+/* ── Charts row ────────────────────────────────────────────────── */
+.charts-row{display:grid;grid-template-columns:2fr 1fr 1fr;gap:14px;margin-bottom:20px}
+@media(max-width:900px){.charts-row{grid-template-columns:1fr;}}
+.chart-card{background:var(--surf);border:1px solid var(--border);border-radius:14px;padding:16px 18px}
+.chart-title{font-size:12px;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;margin-bottom:12px;display:flex;justify-content:space-between;align-items:center}
+.chart-wrap{position:relative;height:170px}
 
-    /* ── Stats cards ── */
-    .stats-grid {
-      display: grid;
-      grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
-      gap: 14px;
-      margin-bottom: 24px;
-    }
-    .stat-card {
-      background: var(--surface);
-      border: 1px solid var(--border);
-      border-radius: 14px;
-      padding: 18px 20px;
-    }
-    .stat-label { font-size: 12px; color: var(--muted); margin-bottom: 8px; text-transform: uppercase; letter-spacing: .5px; }
-    .stat-value { font-size: 32px; font-weight: 700; line-height: 1; }
-    .stat-card.purple .stat-value { color: var(--purple); }
-    .stat-card.gold   .stat-value { color: var(--gold); }
-    .stat-card.green  .stat-value { color: var(--green); }
-    .stat-card.blue   .stat-value { color: #60a5fa; }
-    .stat-card.pink   .stat-value { color: #f472b6; }
+/* ── Data row ──────────────────────────────────────────────────── */
+.data-row{display:grid;grid-template-columns:55% 1fr;gap:14px}
+@media(max-width:900px){.data-row{grid-template-columns:1fr}}
 
-    /* ── Columns ── */
-    .columns {
-      display: grid;
-      grid-template-columns: 1fr 1fr;
-      gap: 20px;
-    }
-    @media (max-width: 900px) { .columns { grid-template-columns: 1fr; } }
+.panel{background:var(--surf);border:1px solid var(--border);border-radius:14px;overflow:hidden;display:flex;flex-direction:column}
+.panel-hdr{padding:14px 18px;border-bottom:1px solid var(--border);display:flex;flex-direction:column;gap:10px;flex-shrink:0}
+.panel-hdr-top{display:flex;align-items:center;justify-content:space-between}
+.panel-hdr-title{font-weight:600;font-size:14px;display:flex;align-items:center;gap:8px}
+.count-badge{background:var(--bg);border:1px solid var(--border);border-radius:6px;padding:2px 8px;font-size:11px;color:var(--muted)}
+.update-info{font-size:11px;color:var(--muted)}
 
-    .panel {
-      background: var(--surface);
-      border: 1px solid var(--border);
-      border-radius: 14px;
-      overflow: hidden;
-    }
-    .panel-header {
-      padding: 14px 18px;
-      border-bottom: 1px solid var(--border);
-      font-weight: 600;
-      font-size: 13px;
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-    }
-    .panel-count {
-      background: var(--bg);
-      border: 1px solid var(--border);
-      border-radius: 6px;
-      padding: 2px 8px;
-      font-size: 11px;
-      color: var(--muted);
-    }
+/* Filters */
+.filter-row{display:flex;flex-wrap:wrap;gap:6px;align-items:center}
+.filter-chip{padding:4px 12px;border-radius:20px;border:1px solid var(--border);background:transparent;color:var(--muted);font-size:12px;cursor:pointer;transition:all .15s}
+.filter-chip:hover{border-color:var(--purple);color:var(--purple)}
+.filter-chip.active{border-color:var(--purple);background:var(--purple-dim);color:var(--text)}
+.filter-chip.yes.active{border-color:var(--green);background:rgba(34,197,94,.15);color:var(--green)}
+.filter-chip.no.active{border-color:var(--red);background:rgba(239,68,68,.15);color:var(--red)}
+.filter-chip.maybe.active{border-color:var(--yellow);background:rgba(234,179,8,.15);color:var(--yellow)}
+.search-input{flex:1;min-width:120px;padding:5px 12px;border-radius:8px;border:1px solid var(--border);background:var(--bg);color:var(--text);font-size:12px;outline:none}
+.search-input:focus{border-color:var(--purple)}
 
-    /* ── Questions feed ── */
-    .q-feed { max-height: 560px; overflow-y: auto; }
-    .q-item {
-      padding: 12px 18px;
-      border-bottom: 1px solid var(--border);
-      display: grid;
-      grid-template-columns: auto 1fr auto;
-      gap: 10px;
-      align-items: start;
-    }
-    .q-item:last-child { border-bottom: none; }
-    .q-uid {
-      font-size: 11px;
-      color: var(--muted);
-      background: var(--bg);
-      border-radius: 5px;
-      padding: 2px 7px;
-      white-space: nowrap;
-      font-family: monospace;
-    }
-    .q-text { font-size: 13px; line-height: 1.4; word-break: break-word; }
-    .q-time { font-size: 11px; color: var(--muted); white-space: nowrap; text-align: right; }
-    .q-meta { display: flex; flex-direction: column; gap: 4px; }
-    .badge {
-      display: inline-block;
-      padding: 2px 8px;
-      border-radius: 5px;
-      font-size: 11px;
-      font-weight: 600;
-      text-align: center;
-    }
-    .badge.yes    { background: #14532d; color: #86efac; }
-    .badge.no     { background: #7f1d1d; color: #fca5a5; }
-    .badge.maybe  { background: #78350f; color: #fcd34d; }
+/* Questions feed */
+.q-feed{overflow-y:auto;max-height:520px;flex:1}
+.q-item{padding:11px 18px;border-bottom:1px solid rgba(42,36,69,.6);display:grid;grid-template-columns:auto 1fr auto;gap:10px;align-items:start;transition:background .15s}
+.q-item:last-child{border-bottom:none}
+.q-item:hover{background:rgba(139,61,255,.04)}
+.q-uid{font-family:monospace;font-size:11px;color:var(--muted);background:var(--bg);border-radius:5px;padding:2px 7px;white-space:nowrap;cursor:pointer}
+.q-uid:hover{color:var(--purple)}
+.q-body{display:flex;flex-direction:column;gap:5px}
+.q-text{font-size:13px;line-height:1.45;word-break:break-word}
+.q-tags{display:flex;gap:5px;flex-wrap:wrap}
+.badge{display:inline-block;padding:2px 8px;border-radius:5px;font-size:11px;font-weight:600}
+.badge.yes{background:#14532d;color:#86efac}
+.badge.no{background:#7f1d1d;color:#fca5a5}
+.badge.maybe{background:#78350f;color:#fcd34d}
+.cat-badge{background:var(--surf2);color:var(--muted);padding:2px 8px;border-radius:5px;font-size:11px}
+.q-time{font-size:11px;color:var(--muted);white-space:nowrap;text-align:right}
+.q-date{font-size:10px;color:rgba(123,111,160,.6);margin-top:2px;text-align:right}
 
-    /* ── Users table ── */
-    .users-wrap { max-height: 560px; overflow-y: auto; }
-    table { width: 100%; border-collapse: collapse; font-size: 13px; }
-    th {
-      background: var(--bg);
-      padding: 10px 14px;
-      text-align: left;
-      font-size: 11px;
-      text-transform: uppercase;
-      letter-spacing: .5px;
-      color: var(--muted);
-      position: sticky;
-      top: 0;
-    }
-    td { padding: 10px 14px; border-bottom: 1px solid var(--border); }
-    tr:last-child td { border-bottom: none; }
-    tr:hover td { background: rgba(139,61,255,.06); }
-    .uid-cell { font-family: monospace; font-size: 12px; color: var(--muted); }
-    .premium-badge {
-      background: #422006;
-      color: var(--gold);
-      padding: 2px 8px;
-      border-radius: 5px;
-      font-size: 11px;
-      font-weight: 600;
-    }
-    .free-badge {
-      color: var(--muted);
-      font-size: 11px;
-    }
+/* Users table */
+.users-wrap{overflow-y:auto;max-height:520px;flex:1}
+table{width:100%;border-collapse:collapse;font-size:13px}
+thead{position:sticky;top:0;z-index:5}
+th{background:var(--bg);padding:10px 14px;text-align:left;font-size:11px;text-transform:uppercase;letter-spacing:.5px;color:var(--muted);user-select:none;cursor:pointer;white-space:nowrap}
+th:hover{color:var(--text)}
+th.sorted{color:var(--purple)}
+th .sort-arrow{margin-left:4px;opacity:.5}
+th.sorted .sort-arrow{opacity:1}
+td{padding:9px 14px;border-bottom:1px solid rgba(42,36,69,.5);vertical-align:middle}
+tr:last-child td{border-bottom:none}
+tr:hover td{background:rgba(139,61,255,.05)}
+.uid-cell{font-family:monospace;font-size:12px;color:var(--muted);max-width:120px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.prem-badge{background:#422006;color:var(--gold);padding:2px 8px;border-radius:5px;font-size:11px;font-weight:600}
+.free-badge{color:var(--muted);font-size:11px}
+.bonus-val{color:var(--blue);font-weight:600}
 
-    .empty { padding: 32px; text-align: center; color: var(--muted); font-size: 13px; }
+/* Empty & loading */
+.empty-msg{padding:40px;text-align:center;color:var(--muted);font-size:13px}
 
-    /* scrollbar */
-    ::-webkit-scrollbar { width: 5px; }
-    ::-webkit-scrollbar-track { background: transparent; }
-    ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
-  </style>
+/* Scrollbar */
+::-webkit-scrollbar{width:5px;height:5px}
+::-webkit-scrollbar-track{background:transparent}
+::-webkit-scrollbar-thumb{background:var(--border);border-radius:3px}
+::-webkit-scrollbar-thumb:hover{background:var(--muted)}
+</style>
 </head>
 <body>
 
-<!-- Login screen -->
+<!-- ══════════════ LOGIN ══════════════ -->
 <div id="login">
-  <div class="logo">🔮</div>
-  <h1>Oracle Admin</h1>
-  <input type="password" id="key-input" placeholder="Введи ключ доступу" />
-  <button onclick="doLogin()">Увійти</button>
-  <div class="err" id="login-err"></div>
+  <div class="login-card">
+    <div class="login-orb">🔮</div>
+    <h1>Oracle Admin</h1>
+    <p>Адміністрування Oracle Bot</p>
+    <input type="password" id="key-input" placeholder="Пароль доступу" autocomplete="current-password"/>
+    <button id="login-btn">Увійти</button>
+    <div class="login-err" id="login-err"></div>
+  </div>
 </div>
 
-<!-- Dashboard -->
+<!-- ══════════════ DASHBOARD ══════════════ -->
 <div id="dashboard">
   <header>
-    <h1>🔮 Oracle Bot — Адмін Панель</h1>
-    <button class="logout-btn" onclick="logout()">Вийти</button>
+    <div class="hdr-left">
+      <span class="hdr-logo">🔮</span>
+      <div>
+        <div class="hdr-title">Oracle Bot Admin</div>
+        <div class="hdr-clock" id="hdr-clock">—</div>
+      </div>
+    </div>
+    <div class="hdr-right">
+      <span class="db-dot" id="db-dot"></span>
+      <span class="db-label" id="db-label">DB</span>
+      <button class="btn-sm" onclick="refreshAll(true)">↺ Оновити</button>
+      <span class="update-info" id="last-updated" style="font-size:12px;color:var(--muted)"></span>
+      <button class="btn-sm btn-logout" onclick="logout()">Вийти</button>
+    </div>
   </header>
-  <div class="refresh-bar">
-    <span id="refresh-timer">Оновлено тільки що</span>
-    <button class="refresh-btn" onclick="loadAll()">↺ Оновити</button>
+  <div class="refresh-track">
+    <div class="refresh-fill" id="refresh-fill"></div>
   </div>
 
   <main>
     <!-- Stats -->
-    <div class="stats-grid">
-      <div class="stat-card purple">
-        <div class="stat-label">Всього юзерів</div>
-        <div class="stat-value" id="s-users">—</div>
+    <div class="stats-row">
+      <div class="stat-card c-purple"><div class="stat-label">Всього юзерів</div><div class="stat-val" id="s-users">—</div></div>
+      <div class="stat-card c-gold"><div class="stat-label">Преміум юзерів</div><div class="stat-val" id="s-prem">—</div></div>
+      <div class="stat-card c-green"><div class="stat-label">Питань сьогодні</div><div class="stat-val" id="s-today">—</div></div>
+      <div class="stat-card c-blue"><div class="stat-label">За останню годину</div><div class="stat-val" id="s-hour">—</div></div>
+      <div class="stat-card c-pink"><div class="stat-label">Всього питань</div><div class="stat-val" id="s-total">—</div></div>
+      <div class="stat-card c-red"><div class="stat-label">Питань в лозі</div><div class="stat-val" id="s-logged">—</div></div>
+    </div>
+
+    <!-- Charts -->
+    <div class="charts-row">
+      <div class="chart-card">
+        <div class="chart-title">📈 Активність за 24 години <span id="chart-act-sum" style="color:var(--text)"></span></div>
+        <div class="chart-wrap"><canvas id="chart-activity"></canvas></div>
       </div>
-      <div class="stat-card gold">
-        <div class="stat-label">Преміум юзерів</div>
-        <div class="stat-value" id="s-premium">—</div>
+      <div class="chart-card">
+        <div class="chart-title">🎯 Відповіді</div>
+        <div class="chart-wrap"><canvas id="chart-verdict"></canvas></div>
       </div>
-      <div class="stat-card green">
-        <div class="stat-label">Питань сьогодні</div>
-        <div class="stat-value" id="s-today">—</div>
-      </div>
-      <div class="stat-card blue">
-        <div class="stat-label">За останню годину</div>
-        <div class="stat-value" id="s-hour">—</div>
-      </div>
-      <div class="stat-card pink">
-        <div class="stat-label">Всього питань</div>
-        <div class="stat-value" id="s-total">—</div>
+      <div class="chart-card">
+        <div class="chart-title">📂 Категорії</div>
+        <div class="chart-wrap"><canvas id="chart-cat"></canvas></div>
       </div>
     </div>
 
-    <!-- Two columns -->
-    <div class="columns">
+    <!-- Data -->
+    <div class="data-row">
       <!-- Questions feed -->
       <div class="panel">
-        <div class="panel-header">
-          💬 Останні питання
-          <span class="panel-count" id="q-count">0</span>
+        <div class="panel-hdr">
+          <div class="panel-hdr-top">
+            <span class="panel-hdr-title">💬 Питання <span class="count-badge" id="q-count">0</span></span>
+          </div>
+          <div class="filter-row">
+            <button class="filter-chip active" data-v="" onclick="setVerdictFilter(this,'')">Всі</button>
+            <button class="filter-chip yes" data-v="yes" onclick="setVerdictFilter(this,'yes')">✅ ТАК</button>
+            <button class="filter-chip no"  data-v="no"  onclick="setVerdictFilter(this,'no')">❌ НІ</button>
+            <button class="filter-chip maybe" data-v="maybe" onclick="setVerdictFilter(this,'maybe')">🤔 МОЖЕ</button>
+            <input class="search-input" placeholder="Пошук питання..." id="q-search" oninput="renderQuestions()"/>
+          </div>
+          <div class="filter-row" id="cat-filters">
+            <button class="filter-chip active" data-c="" onclick="setCatFilter(this,'')">Всі</button>
+            <button class="filter-chip" data-c="Любовь" onclick="setCatFilter(this,'Любовь')">💕 Любов</button>
+            <button class="filter-chip" data-c="Карьера" onclick="setCatFilter(this,'Карьера')">💼 Карʼєра</button>
+            <button class="filter-chip" data-c="Деньги" onclick="setCatFilter(this,'Деньги')">💰 Гроші</button>
+            <button class="filter-chip" data-c="Здоровье" onclick="setCatFilter(this,'Здоровье')">🌿 Здоровʼя</button>
+          </div>
         </div>
-        <div class="q-feed" id="q-feed">
-          <div class="empty">Завантаження...</div>
-        </div>
+        <div class="q-feed" id="q-feed"><div class="empty-msg">Завантаження...</div></div>
       </div>
 
       <!-- Users table -->
       <div class="panel">
-        <div class="panel-header">
-          👥 Юзери
-          <span class="panel-count" id="u-count">0</span>
+        <div class="panel-hdr">
+          <div class="panel-hdr-top">
+            <span class="panel-hdr-title">👥 Юзери <span class="count-badge" id="u-count">0</span></span>
+          </div>
+          <div class="filter-row">
+            <input class="search-input" placeholder="Пошук User ID..." id="u-search" oninput="renderUsers()" style="flex:1"/>
+          </div>
         </div>
         <div class="users-wrap">
           <table>
             <thead>
               <tr>
-                <th>User ID</th>
-                <th>Всього</th>
-                <th>Сьогодні</th>
-                <th>Статус</th>
-                <th>Остання активність</th>
+                <th onclick="toggleSort('userId')">User ID <span class="sort-arrow" id="sort-userId">↕</span></th>
+                <th onclick="toggleSort('totalAsked')">Всього <span class="sort-arrow" id="sort-totalAsked">↕</span></th>
+                <th onclick="toggleSort('dailyCount')">Сьогодні <span class="sort-arrow" id="sort-dailyCount">↕</span></th>
+                <th onclick="toggleSort('freeBonus')">Бонус <span class="sort-arrow" id="sort-freeBonus">↕</span></th>
+                <th onclick="toggleSort('isPremium')">Статус <span class="sort-arrow" id="sort-isPremium">↕</span></th>
+                <th onclick="toggleSort('lastSeen')">Остання активність <span class="sort-arrow" id="sort-lastSeen">↕</span></th>
               </tr>
             </thead>
-            <tbody id="u-body">
-              <tr><td colspan="5" class="empty">Завантаження...</td></tr>
-            </tbody>
+            <tbody id="u-body"><tr><td colspan="6" class="empty-msg">Завантаження...</td></tr></tbody>
           </table>
         </div>
       </div>
@@ -329,142 +261,346 @@
 </div>
 
 <script>
-  let adminKey = '';
-  let refreshInterval = null;
-  let lastRefresh = null;
+// ── State ─────────────────────────────────────────────────────────────
+let adminKey   = '';
+let allQ       = [];
+let allU       = [];
+let charts     = {};
+let cdTimer    = null;
+let clockTimer = null;
+let cdSec      = 30;
+const CD_MAX   = 30;
 
-  function doLogin() {
-    const k = document.getElementById('key-input').value.trim();
-    if (!k) return;
-    adminKey = k;
-    loadAll().then(ok => {
-      if (ok) {
-        localStorage.setItem('oracle_admin_key', k);
-        document.getElementById('login').style.display = 'none';
-        document.getElementById('dashboard').style.display = 'block';
-        refreshInterval = setInterval(() => { loadAll(); updateTimer(); }, 30000);
-        setInterval(updateTimer, 5000);
-      } else {
-        document.getElementById('login-err').textContent = 'Невірний ключ доступу';
-        adminKey = '';
-      }
-    });
-  }
+let fVerdict  = '';
+let fCategory = '';
+let sortBy    = 'totalAsked';
+let sortAsc   = false;
 
-  function logout() {
-    localStorage.removeItem('oracle_admin_key');
-    clearInterval(refreshInterval);
-    document.getElementById('login').style.display = 'flex';
-    document.getElementById('dashboard').style.display = 'none';
-    document.getElementById('key-input').value = '';
+// ── Login ─────────────────────────────────────────────────────────────
+document.getElementById('login-btn').addEventListener('click', doLogin);
+document.getElementById('key-input').addEventListener('keydown', e => { if (e.key === 'Enter') doLogin(); });
+
+async function doLogin() {
+  const k = document.getElementById('key-input').value.trim();
+  if (!k) return;
+  adminKey = k;
+  document.getElementById('login-err').textContent = '';
+  document.getElementById('login-btn').textContent = 'Вхід...';
+  const ok = await refreshAll();
+  document.getElementById('login-btn').textContent = 'Увійти';
+  if (ok) {
+    localStorage.setItem('ora_admin', k);
+    document.getElementById('login').style.display    = 'none';
+    document.getElementById('dashboard').style.display = 'flex';
+    startTimers();
+  } else {
+    document.getElementById('login-err').textContent = 'Невірний пароль';
     adminKey = '';
   }
+}
 
-  function updateTimer() {
-    if (!lastRefresh) return;
-    const sec = Math.round((Date.now() - lastRefresh) / 1000);
-    const el = document.getElementById('refresh-timer');
-    if (sec < 60) el.textContent = `Оновлено ${sec}с тому`;
-    else el.textContent = `Оновлено ${Math.round(sec/60)}хв тому`;
-  }
+function logout() {
+  localStorage.removeItem('ora_admin');
+  stopTimers();
+  document.getElementById('dashboard').style.display = 'none';
+  document.getElementById('login').style.display      = 'flex';
+  document.getElementById('key-input').value = '';
+  adminKey = '';
+}
 
-  async function apiFetch(path) {
-    const r = await fetch(`/admin/api/${path}?key=${encodeURIComponent(adminKey)}`);
+// ── Timers ────────────────────────────────────────────────────────────
+function startTimers() {
+  updateClock();
+  clockTimer = setInterval(updateClock, 1000);
+  cdSec = CD_MAX;
+  updateFill();
+  cdTimer = setInterval(() => {
+    cdSec--;
+    updateFill();
+    if (cdSec <= 0) { cdSec = CD_MAX; refreshAll(); }
+  }, 1000);
+}
+
+function stopTimers() {
+  clearInterval(cdTimer);
+  clearInterval(clockTimer);
+  cdTimer = clockTimer = null;
+}
+
+function updateFill() {
+  document.getElementById('refresh-fill').style.width = (cdSec / CD_MAX * 100) + '%';
+}
+
+function updateClock() {
+  document.getElementById('hdr-clock').textContent = new Date().toLocaleString('uk', {
+    day: '2-digit', month: '2-digit', year: 'numeric',
+    hour: '2-digit', minute: '2-digit', second: '2-digit',
+  });
+}
+
+// ── API ───────────────────────────────────────────────────────────────
+async function api(path) {
+  try {
+    const r = await fetch('/admin/api/' + path, { headers: { 'x-admin-key': adminKey } });
     if (r.status === 401) return null;
     return r.json();
-  }
+  } catch { return null; }
+}
 
-  async function loadAll() {
-    const [stats, users, questions] = await Promise.all([
-      apiFetch('stats'),
-      apiFetch('users'),
-      apiFetch('questions?limit=200'),
-    ]);
-    if (!stats) return false;
-    renderStats(stats);
-    renderUsers(users || []);
-    renderQuestions(questions || []);
-    lastRefresh = Date.now();
-    document.getElementById('refresh-timer').textContent = 'Оновлено тільки що';
-    return true;
-  }
+async function refreshAll(manual = false) {
+  if (manual) { cdSec = CD_MAX; updateFill(); }
+  const [stats, users, questions] = await Promise.all([
+    api('stats'),
+    api('users'),
+    api('questions?limit=500'),
+  ]);
+  if (!stats) return false;
 
-  function renderStats(s) {
-    document.getElementById('s-users').textContent   = s.totalUsers   ?? '—';
-    document.getElementById('s-premium').textContent = s.premiumUsers ?? '—';
-    document.getElementById('s-today').textContent   = s.questionsToday ?? '—';
-    document.getElementById('s-hour').textContent    = s.questionsLastHour ?? '—';
-    document.getElementById('s-total').textContent   = s.totalQuestions ?? '—';
-  }
+  allU = users    || [];
+  allQ = questions || [];
 
-  function renderQuestions(list) {
-    document.getElementById('q-count').textContent = list.length;
-    const feed = document.getElementById('q-feed');
-    if (!list.length) { feed.innerHTML = '<div class="empty">Питань ще немає</div>'; return; }
-    feed.innerHTML = list.map(q => {
-      const t = new Date(q.ts);
-      const timeStr = t.toLocaleDateString('uk', {day:'2-digit',month:'2-digit'}) + ' ' +
-                      t.toLocaleTimeString('uk', {hour:'2-digit',minute:'2-digit'});
-      const badgeClass = q.color === 'yes' ? 'yes' : q.color === 'no' ? 'no' : 'maybe';
-      const verdictShort = q.color === 'yes' ? 'ТАК' : q.color === 'no' ? 'НІ' : 'МОЖЛИВО';
-      return `<div class="q-item">
-        <div>
-          <div class="q-uid">${escHtml(q.userId)}</div>
-        </div>
-        <div class="q-meta">
-          <div class="q-text">${escHtml(q.question)}</div>
-          <span class="badge ${badgeClass}">${verdictShort}</span>
-        </div>
-        <div class="q-time">${timeStr}</div>
-      </div>`;
-    }).join('');
-  }
+  renderStats(stats);
+  renderCharts();
+  renderQuestions();
+  renderUsers();
 
-  function renderUsers(list) {
-    document.getElementById('u-count').textContent = list.length;
-    const tbody = document.getElementById('u-body');
-    if (!list.length) { tbody.innerHTML = '<tr><td colspan="5" class="empty">Юзерів ще немає</td></tr>'; return; }
-    tbody.innerHTML = list.map(u => {
-      const lastSeen = u.lastSeen
-        ? new Date(u.lastSeen).toLocaleString('uk', {day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'})
-        : '—';
-      const premiumEl = u.isPremium
-        ? `<span class="premium-badge">⭐ Преміум</span>`
-        : `<span class="free-badge">Безкоштовний</span>`;
-      return `<tr>
-        <td class="uid-cell">${escHtml(u.userId)}</td>
-        <td><strong>${u.totalAsked}</strong></td>
-        <td>${u.dailyCount}</td>
-        <td>${premiumEl}</td>
-        <td style="color:var(--muted)">${lastSeen}</td>
-      </tr>`;
-    }).join('');
-  }
+  const t = new Date().toLocaleTimeString('uk', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+  document.getElementById('last-updated').textContent = 'Оновлено: ' + t;
 
-  function escHtml(str) {
-    return String(str).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+  const dbDot   = document.getElementById('db-dot');
+  const dbLabel = document.getElementById('db-label');
+  if (stats.dbReady) {
+    dbDot.className = 'db-dot';
+    dbLabel.textContent = 'DB online';
+    dbLabel.style.color = 'var(--green)';
+  } else {
+    dbDot.className = 'db-dot offline';
+    dbLabel.textContent = 'DB offline';
+    dbLabel.style.color = 'var(--red)';
   }
+  return true;
+}
 
-  document.getElementById('key-input').addEventListener('keydown', e => {
-    if (e.key === 'Enter') doLogin();
+// ── Stats ─────────────────────────────────────────────────────────────
+function renderStats(s) {
+  document.getElementById('s-users').textContent  = fmt(s.totalUsers);
+  document.getElementById('s-prem').textContent   = fmt(s.premiumUsers);
+  document.getElementById('s-today').textContent  = fmt(s.questionsToday);
+  document.getElementById('s-hour').textContent   = fmt(s.questionsLastHour);
+  document.getElementById('s-total').textContent  = fmt(s.totalQuestions);
+  document.getElementById('s-logged').textContent = fmt(s.loggedQuestions);
+}
+
+function fmt(n) { return n == null ? '—' : Number(n).toLocaleString(); }
+
+// ── Charts ────────────────────────────────────────────────────────────
+const GRID_COLOR = '#2a2445';
+const MUTED      = '#7b6fa0';
+
+function initCharts() {
+  Chart.defaults.color = MUTED;
+  Chart.defaults.borderColor = GRID_COLOR;
+
+  // Activity (line)
+  charts.activity = new Chart(document.getElementById('chart-activity'), {
+    type: 'line',
+    data: { labels: [], datasets: [{ data: [], borderColor: '#8b3dff', backgroundColor: 'rgba(139,61,255,.15)', fill: true, tension: 0.4, pointRadius: 3, pointBackgroundColor: '#8b3dff' }] },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      plugins: { legend: { display: false }, tooltip: { callbacks: { label: ctx => ' ' + ctx.parsed.y + ' питань' } } },
+      scales: {
+        x: { grid: { color: GRID_COLOR }, ticks: { color: MUTED, maxTicksLimit: 8, font: { size: 11 } } },
+        y: { grid: { color: GRID_COLOR }, ticks: { color: MUTED, stepSize: 1, font: { size: 11 } }, beginAtZero: true },
+      },
+    },
   });
 
-  // Auto-login from saved key
-  const saved = localStorage.getItem('oracle_admin_key');
-  if (saved) {
-    adminKey = saved;
-    loadAll().then(ok => {
-      if (ok) {
-        document.getElementById('login').style.display = 'none';
-        document.getElementById('dashboard').style.display = 'block';
-        refreshInterval = setInterval(() => { loadAll(); updateTimer(); }, 30000);
-        setInterval(updateTimer, 5000);
-      } else {
-        localStorage.removeItem('oracle_admin_key');
-        adminKey = '';
-      }
-    });
+  // Verdict (doughnut)
+  charts.verdict = new Chart(document.getElementById('chart-verdict'), {
+    type: 'doughnut',
+    data: {
+      labels: ['ТАК', 'НІ', 'МОЖЕ'],
+      datasets: [{ data: [0,0,0], backgroundColor: ['#22c55e','#ef4444','#eab308'], borderWidth: 0, hoverOffset: 4 }],
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false, cutout: '65%',
+      plugins: { legend: { position: 'right', labels: { color: MUTED, font: { size: 11 }, padding: 10, boxWidth: 12 } } },
+    },
+  });
+
+  // Category (bar)
+  charts.cat = new Chart(document.getElementById('chart-cat'), {
+    type: 'bar',
+    data: { labels: [], datasets: [{ data: [], backgroundColor: ['rgba(139,61,255,.75)','rgba(96,165,250,.75)','rgba(245,200,66,.75)','rgba(34,197,94,.75)','rgba(123,111,160,.55)'], borderRadius: 4, borderSkipped: false }] },
+    options: {
+      indexAxis: 'y', responsive: true, maintainAspectRatio: false,
+      plugins: { legend: { display: false } },
+      scales: {
+        x: { grid: { color: GRID_COLOR }, ticks: { color: MUTED, font: { size: 11 } }, beginAtZero: true },
+        y: { grid: { display: false }, ticks: { color: MUTED, font: { size: 11 } } },
+      },
+    },
+  });
+}
+
+function renderCharts() {
+  if (!charts.activity) initCharts();
+  const now = Date.now();
+
+  // ── Activity: 24 1-hour buckets ──
+  const buckets = new Array(24).fill(0);
+  const labels  = [];
+  for (let i = 23; i >= 0; i--) {
+    const d = new Date(now - i * 3600000);
+    labels.push(d.toLocaleTimeString('uk', { hour: '2-digit', minute: '2-digit' }));
   }
+  for (const q of allQ) {
+    const h = Math.floor((now - q.ts) / 3600000);
+    if (h >= 0 && h < 24) buckets[23 - h]++;
+  }
+  charts.activity.data.labels = labels;
+  charts.activity.data.datasets[0].data = buckets;
+  charts.activity.update();
+  const sum24 = buckets.reduce((a,b) => a+b, 0);
+  document.getElementById('chart-act-sum').textContent = sum24 ? `${sum24} за 24г` : '';
+
+  // ── Verdict ──
+  const vc = { yes: 0, no: 0, maybe: 0 };
+  for (const q of allQ) vc[q.color] = (vc[q.color] || 0) + 1;
+  charts.verdict.data.datasets[0].data = [vc.yes, vc.no, vc.maybe];
+  charts.verdict.update();
+
+  // ── Categories ──
+  const cc = {};
+  for (const q of allQ) { const c = q.category || 'Інше'; cc[c] = (cc[c] || 0) + 1; }
+  const catSorted = Object.entries(cc).sort((a,b) => b[1]-a[1]).slice(0, 6);
+  const CAT_EMOJI = { 'Любовь': '💕', 'Карьера': '💼', 'Деньги': '💰', 'Здоровье': '🌿', 'Інше': '❓' };
+  charts.cat.data.labels   = catSorted.map(([k]) => (CAT_EMOJI[k] || '') + ' ' + k);
+  charts.cat.data.datasets[0].data = catSorted.map(([,v]) => v);
+  charts.cat.update();
+}
+
+// ── Questions ─────────────────────────────────────────────────────────
+function setVerdictFilter(btn, v) {
+  fVerdict = v;
+  document.querySelectorAll('[data-v]').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+  renderQuestions();
+}
+
+function setCatFilter(btn, c) {
+  fCategory = c;
+  document.querySelectorAll('[data-c]').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+  renderQuestions();
+}
+
+function renderQuestions() {
+  const search = (document.getElementById('q-search').value || '').toLowerCase();
+  let list = allQ;
+  if (fVerdict)  list = list.filter(q => q.color === fVerdict);
+  if (fCategory) list = list.filter(q => q.category === fCategory);
+  if (search)    list = list.filter(q => q.question.toLowerCase().includes(search) || q.userId.toLowerCase().includes(search));
+
+  document.getElementById('q-count').textContent = list.length;
+  const feed = document.getElementById('q-feed');
+  if (!list.length) { feed.innerHTML = '<div class="empty-msg">Нічого не знайдено</div>'; return; }
+
+  const CAT_EMOJI = { 'Любовь': '💕', 'Карьера': '💼', 'Деньги': '💰', 'Здоровье': '🌿' };
+  const VERDICT_TEXT = { yes: 'ТАК', no: 'НІ', maybe: 'МОЖЕ' };
+
+  feed.innerHTML = list.map(q => {
+    const d  = new Date(q.ts);
+    const td = d.toLocaleTimeString('uk', { hour: '2-digit', minute: '2-digit' });
+    const dd = d.toLocaleDateString('uk', { day: '2-digit', month: '2-digit' });
+    const catLabel = q.category ? `<span class="cat-badge">${CAT_EMOJI[q.category] || ''} ${esc(q.category)}</span>` : '';
+    return `<div class="q-item">
+      <div><span class="q-uid" title="${esc(q.userId)}">${esc(shortId(q.userId))}</span></div>
+      <div class="q-body">
+        <div class="q-text">${esc(q.question)}</div>
+        <div class="q-tags">
+          <span class="badge ${q.color}">${VERDICT_TEXT[q.color] || q.color}</span>
+          ${catLabel}
+        </div>
+      </div>
+      <div><div class="q-time">${td}</div><div class="q-date">${dd}</div></div>
+    </div>`;
+  }).join('');
+}
+
+// ── Users ─────────────────────────────────────────────────────────────
+function toggleSort(col) {
+  if (sortBy === col) sortAsc = !sortAsc;
+  else { sortBy = col; sortAsc = col === 'userId'; }
+  document.querySelectorAll('th.sorted').forEach(th => th.classList.remove('sorted'));
+  const th = document.querySelector(`th[onclick*="${col}"]`);
+  if (th) th.classList.add('sorted');
+  document.querySelectorAll('.sort-arrow').forEach(a => a.textContent = '↕');
+  const arr = document.getElementById('sort-' + col);
+  if (arr) arr.textContent = sortAsc ? '↑' : '↓';
+  renderUsers();
+}
+
+function renderUsers() {
+  const search = (document.getElementById('u-search').value || '').toLowerCase();
+  let list = search ? allU.filter(u => u.userId.toLowerCase().includes(search)) : allU;
+
+  list = [...list].sort((a, b) => {
+    let av = a[sortBy], bv = b[sortBy];
+    if (av == null) av = sortBy === 'userId' ? '' : -Infinity;
+    if (bv == null) bv = sortBy === 'userId' ? '' : -Infinity;
+    if (typeof av === 'boolean') av = av ? 1 : 0;
+    if (typeof bv === 'boolean') bv = bv ? 1 : 0;
+    return sortAsc ? (av > bv ? 1 : -1) : (av < bv ? 1 : -1);
+  });
+
+  document.getElementById('u-count').textContent = list.length;
+  const tbody = document.getElementById('u-body');
+  if (!list.length) { tbody.innerHTML = '<tr><td colspan="6" class="empty-msg">Юзерів не знайдено</td></tr>'; return; }
+
+  tbody.innerHTML = list.map(u => {
+    const ls = u.lastSeen
+      ? new Date(u.lastSeen).toLocaleString('uk', { day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit' })
+      : '—';
+    const status = u.isPremium
+      ? `<span class="prem-badge">⭐ Преміум</span>`
+      : `<span class="free-badge">Free</span>`;
+    const bonus = u.freeBonus > 0 ? `<span class="bonus-val">+${u.freeBonus}</span>` : `<span style="color:var(--muted)">—</span>`;
+    return `<tr>
+      <td class="uid-cell" title="${esc(u.userId)}">${esc(shortId(u.userId))}</td>
+      <td><strong>${u.totalAsked}</strong></td>
+      <td>${u.dailyCount}</td>
+      <td>${bonus}</td>
+      <td>${status}</td>
+      <td style="color:var(--muted);font-size:12px">${ls}</td>
+    </tr>`;
+  }).join('');
+}
+
+// ── Utils ─────────────────────────────────────────────────────────────
+function esc(s) {
+  return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+function shortId(id) {
+  const s = String(id);
+  return s.length > 10 ? s.slice(0,5) + '…' + s.slice(-4) : s;
+}
+
+// ── Auto-login from localStorage ──────────────────────────────────────
+(async function init() {
+  const saved = localStorage.getItem('ora_admin');
+  if (!saved) return;
+  adminKey = saved;
+  const ok = await refreshAll();
+  if (ok) {
+    document.getElementById('login').style.display    = 'none';
+    document.getElementById('dashboard').style.display = 'flex';
+    startTimers();
+  } else {
+    localStorage.removeItem('ora_admin');
+    adminKey = '';
+  }
+})();
 </script>
 </body>
 </html>

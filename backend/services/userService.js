@@ -128,11 +128,11 @@ function hydrate(userId) {
 function getStatus(userId) {
   const { u } = hydrate(userId);
   const isPremium = !!(u.premiumUntil && new Date(u.premiumUntil) > new Date());
-  if (isPremium) return { canAsk: true, remaining: null, isPremium: true, premiumUntil: u.premiumUntil, dailyCount: u.dailyCount };
+  if (isPremium) return { canAsk: true, remaining: null, isPremium: true, premiumUntil: u.premiumUntil, dailyCount: u.dailyCount, totalAsked: u.totalAsked || 0 };
   const dailyLeft = Math.max(0, FREE_LIMIT - u.dailyCount);
   const bonusLeft = u.freeBonus || 0;
   const remaining = dailyLeft + bonusLeft;
-  return { canAsk: remaining > 0, remaining, dailyLeft, bonusLeft, isPremium: false, premiumUntil: null, dailyCount: u.dailyCount, limit: FREE_LIMIT };
+  return { canAsk: remaining > 0, remaining, dailyLeft, bonusLeft, isPremium: false, premiumUntil: null, dailyCount: u.dailyCount, limit: FREE_LIMIT, totalAsked: u.totalAsked || 0 };
 }
 
 function increment(userId) {

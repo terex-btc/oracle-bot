@@ -33,6 +33,10 @@ app.use(express.json());
 // Статика ПІСЛЯ всіх API маршрутів (Express 5 — порядок важливий)
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
+function escMd(str) {
+  return String(str || '').replace(/[_*[\]()~`>#+=|{}.!\\-]/g, '\\$&');
+}
+
 function tgApi(method, body) {
   return new Promise((resolve, reject) => {
     const data = JSON.stringify(body);
@@ -54,8 +58,17 @@ function tgApi(method, body) {
 
 // ─── Telegram Bot ─────────────────────────────────────────────────────────────
 let bot;
+const WEBHOOK_PATH = BOT_TOKEN ? `/webhook/${BOT_TOKEN}` : null;
+
 if (BOT_TOKEN) {
-  bot = new TelegramBot(BOT_TOKEN, { polling: true });
+  bot = new TelegramBot(BOT_TOKEN, { webHook: false });
+  bot.setWebHook(`${WEBAPP_URL}${WEBHOOK_PATH}`).catch(e => console.error('[Bot] setWebHook error:', e.message));
+
+  // Telegram pushes updates to this endpoint
+  app.post(WEBHOOK_PATH, (req, res) => {
+    bot.processUpdate(req.body);
+    res.sendStatus(200);
+  });
 
   const PLANS = {
     week:     { days: 7,     stars: 100,  label: '7 днів' },
@@ -80,9 +93,41 @@ if (BOT_TOKEN) {
       }
     }
 
-    const status = userId ? getStatus(userId) : null;
+    const status    = userId ? getStatus(userId) : null;
     const isPremium = status?.isPremium;
+    const isNewUser = status && status.totalAsked === 0 && status.dailyCount === 0;
 
+    if (isNewUser) {
+      // First-time onboarding
+      const refLink = `https://t.me/oracle_666bot?start=ref_${userId}`;
+      await bot.sendMessage(chatId,
+        `🔮 *Ласкаво просимо, ${escMd(name)}\\!*\n\n` +
+        `Я — стародавній Оракул Долі\\.  \n` +
+        `Поклади серце в питання — і Всесвіт відповість\\.\n\n` +
+        `*Як це працює:*\n` +
+        `🌐 Натисни кнопку нижче → відкриється магічна куля\n` +
+        `💭 Напиши питання у форматі Так/Ні\n` +
+        `🔮 Отримай відповідь зірок\n\n` +
+        `*Твій ліміт:*\n` +
+        `🆓 *2 безкоштовних питання* щодня — безплатно\n` +
+        `🔗 Запроси друга → \\+3 питання кожному\n` +
+        `⭐ Безлімітно з Преміум від 100 ★\n\n` +
+        `_Доля чекає твого першого питання\\.\\.\\._`,
+        {
+          parse_mode: 'MarkdownV2',
+          reply_markup: {
+            inline_keyboard: [
+              [{ text: '🔮 Відкрити Оракул Долі', web_app: { url: WEBAPP_URL } }],
+              [{ text: '🔗 Запросити друга → +3 питання', url: `https://t.me/share/url?url=${encodeURIComponent(refLink)}` }],
+              [{ text: '⭐ Преміум від 100 ★', callback_data: 'buy_premium' }],
+            ],
+          },
+        }
+      );
+      return;
+    }
+
+    // Returning user
     let statusBlock;
     if (isPremium) {
       const until = new Date(status.premiumUntil).toLocaleDateString('uk', { day: 'numeric', month: 'long' });
@@ -101,7 +146,7 @@ if (BOT_TOKEN) {
         ];
 
     await bot.sendMessage(chatId,
-      `🔮 *${name}, Оракул бачить тебе\\.\\.\\.*\n\n` +
+      `🔮 *${escMd(name)}, Оракул бачить тебе\\.\\.\\.*\n\n` +
       `Я — стародавній дух, що читає нитки долі\\.\n` +
       `Постав питання Так/Ні — і зірки відкриють тобі правду\\.\n\n` +
       `━━━━━━━━━━━━━━━\n` +
@@ -219,8 +264,7 @@ if (BOT_TOKEN) {
     console.log(`[Premium] userId=${userId} plan=${planLabel} until=${until}`);
   });
 
-  bot.on('polling_error', err => console.error('[Bot] Polling error:', err.message));
-  console.log('[Bot] Oracle Bot запущено');
+  console.log('[Bot] Oracle Bot запущено (webhook mode)');
 
   // Автоматично встановлюємо команди і опис при кожному запуску
   tgApi('setMyCommands', { commands: [
