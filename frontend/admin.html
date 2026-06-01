@@ -134,6 +134,42 @@ tr:hover td{background:rgba(139,61,255,.05)}
 /* Empty & loading */
 .empty-msg{padding:40px;text-align:center;color:var(--muted);font-size:13px}
 
+/* ── Clickable uid ──────────────────────────────────────────────── */
+.uid-btn{cursor:pointer;transition:color .15s}
+.uid-btn:hover{color:var(--purple) !important}
+tr.clickable{cursor:pointer}
+tr.clickable:hover td{background:rgba(139,61,255,.08)}
+
+/* ── User Modal ──────────────────────────────────────────────────── */
+.modal-overlay{display:none;position:fixed;inset:0;background:rgba(4,3,12,.8);backdrop-filter:blur(6px);z-index:100;align-items:center;justify-content:center;padding:20px}
+.modal-overlay.open{display:flex}
+.modal-box{background:var(--surf);border:1px solid var(--border);border-radius:20px;width:100%;max-width:700px;max-height:88vh;display:flex;flex-direction:column;overflow:hidden;box-shadow:0 0 80px rgba(139,61,255,.25)}
+.modal-hdr{padding:20px 24px;display:flex;align-items:center;gap:16px;border-bottom:1px solid var(--border);flex-shrink:0}
+.modal-avatar{width:54px;height:54px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:22px;font-weight:800;color:#fff;flex-shrink:0;letter-spacing:-.5px}
+.modal-info{flex:1;min-width:0}
+.modal-name{font-size:17px;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.modal-sub{font-size:12px;color:var(--muted);margin-top:3px;display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.modal-uid{font-family:monospace;background:var(--bg);border:1px solid var(--border);border-radius:5px;padding:1px 6px;font-size:11px;color:var(--muted)}
+.modal-acts{display:flex;align-items:center;gap:8px;flex-shrink:0}
+.btn-tg{display:inline-flex;align-items:center;gap:5px;padding:7px 14px;border-radius:9px;border:1px solid rgba(96,165,250,.4);background:rgba(96,165,250,.08);color:var(--blue);font-size:13px;text-decoration:none;transition:all .2s;white-space:nowrap}
+.btn-tg:hover{border-color:var(--blue);background:rgba(96,165,250,.18)}
+.modal-close{width:34px;height:34px;border-radius:9px;border:1px solid var(--border);background:transparent;color:var(--muted);font-size:18px;line-height:1;cursor:pointer;display:flex;align-items:center;justify-content:center;transition:all .2s}
+.modal-close:hover{border-color:var(--red);color:var(--red)}
+.modal-stats{display:flex;border-bottom:1px solid var(--border);flex-shrink:0}
+.ms{flex:1;padding:12px 14px;text-align:center;border-right:1px solid var(--border)}
+.ms:last-child{border-right:none}
+.ms-l{font-size:10px;text-transform:uppercase;letter-spacing:.5px;color:var(--muted);margin-bottom:5px}
+.ms-v{font-size:17px;font-weight:700}
+.modal-qs-hdr{padding:12px 20px;font-size:13px;font-weight:600;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:8px;flex-shrink:0;color:var(--text)}
+.modal-qs-spin{font-size:12px;color:var(--muted);font-weight:400}
+.modal-qs{overflow-y:auto;flex:1}
+.mq-item{padding:12px 20px;border-bottom:1px solid rgba(42,36,69,.5);display:grid;grid-template-columns:1fr auto;gap:10px;align-items:start}
+.mq-item:last-child{border-bottom:none}
+.mq-text{font-size:13px;line-height:1.45;word-break:break-word;margin-bottom:5px}
+.mq-tags{display:flex;gap:5px;flex-wrap:wrap}
+.mq-time{font-size:11px;color:var(--muted);white-space:nowrap;text-align:right}
+.mq-date{font-size:10px;color:rgba(123,111,160,.55);text-align:right;margin-top:2px}
+
 /* Scrollbar */
 ::-webkit-scrollbar{width:5px;height:5px}
 ::-webkit-scrollbar-track{background:transparent}
@@ -236,22 +272,21 @@ tr:hover td{background:rgba(139,61,255,.05)}
             <span class="panel-hdr-title">👥 Юзери <span class="count-badge" id="u-count">0</span></span>
           </div>
           <div class="filter-row">
-            <input class="search-input" placeholder="Пошук User ID..." id="u-search" oninput="renderUsers()" style="flex:1"/>
+            <input class="search-input" placeholder="Пошук по ID або нікнейму..." id="u-search" oninput="renderUsers()" style="flex:1"/>
           </div>
         </div>
         <div class="users-wrap">
           <table>
             <thead>
               <tr>
+                <th onclick="toggleSort('firstName')">Ім'я <span class="sort-arrow" id="sort-firstName">↕</span></th>
                 <th onclick="toggleSort('userId')">User ID <span class="sort-arrow" id="sort-userId">↕</span></th>
                 <th onclick="toggleSort('totalAsked')">Всього <span class="sort-arrow" id="sort-totalAsked">↕</span></th>
-                <th onclick="toggleSort('dailyCount')">Сьогодні <span class="sort-arrow" id="sort-dailyCount">↕</span></th>
-                <th onclick="toggleSort('freeBonus')">Бонус <span class="sort-arrow" id="sort-freeBonus">↕</span></th>
                 <th onclick="toggleSort('isPremium')">Статус <span class="sort-arrow" id="sort-isPremium">↕</span></th>
-                <th onclick="toggleSort('lastSeen')">Остання активність <span class="sort-arrow" id="sort-lastSeen">↕</span></th>
+                <th onclick="toggleSort('lastSeen')">Активність <span class="sort-arrow" id="sort-lastSeen">↕</span></th>
               </tr>
             </thead>
-            <tbody id="u-body"><tr><td colspan="6" class="empty-msg">Завантаження...</td></tr></tbody>
+            <tbody id="u-body"><tr><td colspan="5" class="empty-msg">Завантаження...</td></tr></tbody>
           </table>
         </div>
       </div>
@@ -259,11 +294,44 @@ tr:hover td{background:rgba(139,61,255,.05)}
   </main>
 </div>
 
+<!-- ══════════════ USER MODAL ══════════════ -->
+<div id="user-modal" class="modal-overlay" onclick="closeModal(event)">
+  <div class="modal-box">
+    <div class="modal-hdr">
+      <div class="modal-avatar" id="modal-avatar">?</div>
+      <div class="modal-info">
+        <div class="modal-name" id="modal-name">—</div>
+        <div class="modal-sub">
+          <span class="modal-uid" id="modal-uid">—</span>
+          <span id="modal-username"></span>
+        </div>
+      </div>
+      <div class="modal-acts">
+        <a class="btn-tg" id="modal-tg" href="#" target="_blank">✈️ Telegram</a>
+        <button class="modal-close" onclick="closeModal()">✕</button>
+      </div>
+    </div>
+    <div class="modal-stats">
+      <div class="ms"><div class="ms-l">Питань всього</div><div class="ms-v" id="ms-total">—</div></div>
+      <div class="ms"><div class="ms-l">Сьогодні</div><div class="ms-v" id="ms-today">—</div></div>
+      <div class="ms"><div class="ms-l">Бонус</div><div class="ms-v c-blue" style="color:var(--blue)" id="ms-bonus">—</div></div>
+      <div class="ms"><div class="ms-l">Статус</div><div class="ms-v" id="ms-status">—</div></div>
+      <div class="ms"><div class="ms-l">Остання активність</div><div class="ms-v" id="ms-seen" style="font-size:13px">—</div></div>
+    </div>
+    <div class="modal-qs-hdr">
+      💬 Питання <span class="count-badge" id="ms-qcount">0</span>
+      <span class="modal-qs-spin" id="ms-spin">завантаження...</span>
+    </div>
+    <div class="modal-qs" id="modal-qs"><div class="empty-msg">Завантаження...</div></div>
+  </div>
+</div>
+
 <script>
 // ── State ─────────────────────────────────────────────────────────────
 let adminKey   = '';
 let allQ       = [];
 let allU       = [];
+let userMap    = {};   // userId → user object (for fast lookup)
 let charts     = {};
 let clockTimer = null;
 let sse        = null;
@@ -366,6 +434,8 @@ async function refreshAll(manual = false) {
 
   allU = users    || [];
   allQ = questions || [];
+  userMap = {};
+  for (const u of allU) userMap[u.userId] = u;
 
   renderStats(stats);
   renderCharts();
@@ -518,12 +588,18 @@ function renderQuestions() {
   const VERDICT_TEXT = { yes: 'ТАК', no: 'НІ', maybe: 'МОЖЕ' };
 
   feed.innerHTML = list.map(q => {
-    const d  = new Date(q.ts);
-    const td = d.toLocaleTimeString('uk', { hour: '2-digit', minute: '2-digit' });
-    const dd = d.toLocaleDateString('uk', { day: '2-digit', month: '2-digit' });
+    const d   = new Date(q.ts);
+    const td  = d.toLocaleTimeString('uk', { hour: '2-digit', minute: '2-digit' });
+    const dd  = d.toLocaleDateString('uk', { day: '2-digit', month: '2-digit' });
+    const u   = userMap[q.userId];
     const catLabel = q.category ? `<span class="cat-badge">${CAT_EMOJI[q.category] || ''} ${esc(q.category)}</span>` : '';
+    const nickLabel = u?.username ? `<span style="color:var(--purple);font-size:11px">@${esc(u.username)}</span>` : '';
+    const nameLabel = u?.firstName ? `<span style="font-size:11px;color:var(--text)">${esc(u.firstName)}</span>` : '';
     return `<div class="q-item">
-      <div><span class="q-uid" title="${esc(q.userId)}">${esc(shortId(q.userId))}</span></div>
+      <div style="display:flex;flex-direction:column;gap:3px;align-items:flex-start">
+        <span class="q-uid uid-btn" title="Відкрити профіль ${esc(q.userId)}" onclick="openUserModal('${esc(q.userId)}')">${esc(shortId(q.userId))}</span>
+        ${nameLabel}${nickLabel}
+      </div>
       <div class="q-body">
         <div class="q-text">${esc(q.question)}</div>
         <div class="q-tags">
@@ -573,12 +649,21 @@ function renderUsers() {
     const status = u.isPremium
       ? `<span class="prem-badge">⭐ Преміум</span>`
       : `<span class="free-badge">Free</span>`;
-    const bonus = u.freeBonus > 0 ? `<span class="bonus-val">+${u.freeBonus}</span>` : `<span style="color:var(--muted)">—</span>`;
-    return `<tr>
-      <td class="uid-cell" title="${esc(u.userId)}">${esc(shortId(u.userId))}</td>
+    const nameCell = u.firstName || u.username
+      ? `<div style="font-size:13px">${u.firstName ? esc(u.firstName) : ''}</div>
+         ${u.username ? `<div style="font-size:11px;color:var(--purple)">@${esc(u.username)}</div>` : ''}`
+      : `<span style="color:var(--muted);font-size:12px">—</span>`;
+    const av = avatarLetter(u);
+    const avColor = avatarColor(u.userId);
+    return `<tr class="clickable" onclick="openUserModal('${esc(u.userId)}')">
+      <td>
+        <div style="display:flex;align-items:center;gap:9px">
+          <div style="width:30px;height:30px;border-radius:50%;background:${avColor};display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:700;color:#fff;flex-shrink:0">${av}</div>
+          <div>${nameCell}</div>
+        </div>
+      </td>
+      <td class="uid-cell uid-btn" title="${esc(u.userId)}">${esc(shortId(u.userId))}</td>
       <td><strong>${u.totalAsked}</strong></td>
-      <td>${u.dailyCount}</td>
-      <td>${bonus}</td>
       <td>${status}</td>
       <td style="color:var(--muted);font-size:12px">${ls}</td>
     </tr>`;
@@ -593,6 +678,106 @@ function shortId(id) {
   const s = String(id);
   return s.length > 10 ? s.slice(0,5) + '…' + s.slice(-4) : s;
 }
+
+const AVATAR_COLORS = ['#8b3dff','#3b82f6','#22c55e','#f59e0b','#ef4444','#ec4899','#06b6d4','#a855f7'];
+function avatarColor(userId) {
+  let h = 0;
+  for (const c of String(userId)) h = (h * 31 + c.charCodeAt(0)) & 0x7fffffff;
+  return AVATAR_COLORS[h % AVATAR_COLORS.length];
+}
+function avatarLetter(u) {
+  return (u.firstName?.[0] || u.username?.[0] || u.userId?.[0] || '?').toUpperCase();
+}
+
+// ── User Modal ────────────────────────────────────────────────────────
+async function openUserModal(userId) {
+  const modal = document.getElementById('user-modal');
+  modal.classList.add('open');
+  document.body.style.overflow = 'hidden';
+
+  // Fill user info from allU
+  const u = userMap[userId] || { userId, totalAsked: '?', dailyCount: '?', freeBonus: 0, isPremium: false };
+  const color = avatarColor(userId);
+  const letter = avatarLetter(u);
+
+  document.getElementById('modal-avatar').textContent    = letter;
+  document.getElementById('modal-avatar').style.background = color;
+  document.getElementById('modal-name').textContent      = u.firstName || u.username || userId;
+  document.getElementById('modal-uid').textContent       = userId;
+  document.getElementById('modal-username').textContent  = u.username ? '@' + u.username : '';
+  document.getElementById('modal-username').style.color  = 'var(--purple)';
+
+  // Telegram link
+  const tgLink = u.username
+    ? `https://t.me/${u.username}`
+    : `tg://user?id=${userId}`;
+  document.getElementById('modal-tg').href = tgLink;
+
+  // Stats
+  document.getElementById('ms-total').textContent  = u.totalAsked ?? '?';
+  document.getElementById('ms-today').textContent  = u.dailyCount ?? '?';
+  document.getElementById('ms-bonus').textContent  = u.freeBonus > 0 ? '+' + u.freeBonus : '0';
+  document.getElementById('ms-status').innerHTML   = u.isPremium
+    ? '<span class="prem-badge">⭐ Преміум</span>'
+    : '<span class="free-badge">Free</span>';
+  const ls = u.lastSeen
+    ? new Date(u.lastSeen).toLocaleString('uk', { day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit' })
+    : '—';
+  document.getElementById('ms-seen').textContent = ls;
+
+  // Load all questions for this user
+  document.getElementById('ms-qcount').textContent = '…';
+  document.getElementById('ms-spin').style.display = '';
+  document.getElementById('modal-qs').innerHTML = '<div class="empty-msg">Завантаження...</div>';
+
+  try {
+    const r = await fetch(`/admin/api/user/${encodeURIComponent(userId)}/questions`, {
+      headers: { 'x-admin-key': adminKey }
+    });
+    const qs = await r.json();
+    document.getElementById('ms-spin').style.display = 'none';
+    document.getElementById('ms-qcount').textContent = qs.length;
+    renderModalQuestions(qs);
+  } catch {
+    document.getElementById('ms-spin').textContent = 'помилка';
+    document.getElementById('modal-qs').innerHTML = '<div class="empty-msg">Не вдалося завантажити</div>';
+  }
+}
+
+function renderModalQuestions(qs) {
+  const container = document.getElementById('modal-qs');
+  if (!qs.length) { container.innerHTML = '<div class="empty-msg">Питань ще немає</div>'; return; }
+  const VERDICT_TEXT = { yes: 'ТАК', no: 'НІ', maybe: 'МОЖЕ' };
+  const CAT_EMOJI    = { 'Любовь': '💕', 'Карьера': '💼', 'Деньги': '💰', 'Здоровье': '🌿' };
+  container.innerHTML = qs.map(q => {
+    const d  = new Date(q.ts);
+    const dt = d.toLocaleString('uk', { day:'2-digit',month:'2-digit',year:'2-digit',hour:'2-digit',minute:'2-digit' });
+    const cat = q.category ? `<span class="cat-badge">${CAT_EMOJI[q.category]||''} ${esc(q.category)}</span>` : '';
+    return `<div class="mq-item">
+      <div>
+        <div class="mq-text">${esc(q.question)}</div>
+        <div class="mq-tags">
+          <span class="badge ${q.color}">${VERDICT_TEXT[q.color] || q.color}</span>
+          ${cat}
+        </div>
+      </div>
+      <div>
+        <div class="mq-time">${dt.split(', ')[1] || dt}</div>
+        <div class="mq-date">${dt.split(', ')[0] || ''}</div>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+function closeModal(e) {
+  if (e && e.target !== document.getElementById('user-modal')) return;
+  document.getElementById('user-modal').classList.remove('open');
+  document.body.style.overflow = '';
+}
+
+document.addEventListener('keydown', e => {
+  if (e.key === 'Escape') closeModal();
+});
 
 // ── Auto-login from localStorage ──────────────────────────────────────
 (async function init() {

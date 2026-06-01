@@ -7,18 +7,20 @@ const TelegramBot = require('node-telegram-bot-api');
 const { getOracleAnswer } = require('./config/oracleAnswers');
 let getStatus, increment, activatePremium, addBonus, applyReferral, logQuestion, getStats, getUsers, getQuestions;
 try {
-  ({ getStatus, increment, activatePremium, addBonus, applyReferral, logQuestion, getStats, getUsers, getQuestions } = require('./services/userService'));
+  ({ getStatus, increment, setUserInfo, activatePremium, addBonus, applyReferral, logQuestion, getUserQuestions, getStats, getUsers, getQuestions } = require('./services/userService'));
 } catch (e) {
   console.error('[userService] Load error:', e.message);
-  getStatus     = () => ({ canAsk: true, remaining: 2, isPremium: false });
-  increment     = () => {};
+  getStatus       = () => ({ canAsk: true, remaining: 2, isPremium: false });
+  increment       = () => {};
+  setUserInfo     = () => {};
   activatePremium = () => new Date().toISOString();
-  addBonus      = () => {};
-  applyReferral = () => false;
-  logQuestion   = () => {};
-  getStats      = () => ({});
-  getUsers      = () => [];
-  getQuestions  = () => [];
+  addBonus        = () => {};
+  applyReferral   = () => false;
+  logQuestion     = () => {};
+  getUserQuestions = async () => [];
+  getStats        = () => ({});
+  getUsers        = () => [];
+  getQuestions    = () => [];
 }
 
 const app          = express();
@@ -100,6 +102,7 @@ if (BOT_TOKEN) {
       }
     }
 
+    if (userId) setUserInfo(userId, { username: msg.from?.username, firstName: msg.from?.first_name });
     const status    = userId ? getStatus(userId) : null;
     const isPremium = status?.isPremium;
     const isNewUser = status && status.totalAsked === 0 && status.dailyCount === 0;
@@ -195,6 +198,7 @@ if (BOT_TOKEN) {
   // Callback query
   bot.on('callback_query', async (query) => {
     await bot.answerCallbackQuery(query.id);
+    if (query.from?.id) setUserInfo(query.from.id, { username: query.from.username, firstName: query.from.first_name });
     const data   = query.data;
     const chatId = query.message.chat.id;
     const userId = query.from.id;
@@ -253,6 +257,7 @@ if (BOT_TOKEN) {
   bot.on('message', async (msg) => {
     if (!msg.successful_payment) return;
     const userId  = msg.from?.id;
+    if (userId) setUserInfo(userId, { username: msg.from?.username, firstName: msg.from?.first_name });
     const payload = msg.successful_payment.invoice_payload;
     if (!payload.startsWith('oracle_')) return;
 
@@ -422,6 +427,11 @@ adminApi.get('/users', (req, res) => {
 adminApi.get('/questions', (req, res) => {
   const limit = Math.min(parseInt(req.query.limit) || 200, 1000);
   try { res.json(getQuestions(limit)); }
+  catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+adminApi.get('/user/:userId/questions', async (req, res) => {
+  try { res.json(await getUserQuestions(req.params.userId)); }
   catch (e) { res.status(500).json({ error: e.message }); }
 });
 

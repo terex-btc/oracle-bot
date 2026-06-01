@@ -35,9 +35,15 @@ async function initDb() {
         total_asked  INTEGER NOT NULL DEFAULT 0,
         last_seen    BIGINT,
         free_bonus   INTEGER NOT NULL DEFAULT 0,
-        referred_by  TEXT
+        referred_by  TEXT,
+        username     TEXT,
+        first_name   TEXT
       )
     `);
+
+    // Migrate existing tables that may not have username/first_name columns
+    await pool.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS username TEXT`);
+    await pool.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS first_name TEXT`);
 
     await pool.query(`
       CREATE TABLE IF NOT EXISTS questions (
@@ -54,7 +60,6 @@ async function initDb() {
     await pool.query(`CREATE INDEX IF NOT EXISTS idx_q_ts  ON questions(ts DESC)`);
     await pool.query(`CREATE INDEX IF NOT EXISTS idx_q_uid ON questions(user_id)`);
 
-    // Завантажуємо всіх користувачів у пам'ять
     const { rows: uRows } = await pool.query('SELECT * FROM users');
     for (const r of uRows) {
       memUsers[r.user_id] = {
@@ -65,10 +70,11 @@ async function initDb() {
         lastSeen:     r.last_seen ? Number(r.last_seen) : null,
         freeBonus:    r.free_bonus,
         referredBy:   r.referred_by || null,
+        username:     r.username    || null,
+        firstName:    r.first_name  || null,
       };
     }
 
-    // Завантажуємо останні 1000 питань
     const { rows: qRows } = await pool.query(
       'SELECT * FROM questions ORDER BY ts DESC LIMIT 1000'
     );
@@ -94,13 +100,17 @@ initDb();
 function dbSaveUser(id, u) {
   if (!dbReady || !pool) return;
   pool.query(
-    `INSERT INTO users (user_id, daily_count, last_reset, premium_until, total_asked, last_seen, free_bonus, referred_by)
-     VALUES ($1,$2,$3,$4,$5,$6,$7,$8)
+    `INSERT INTO users
+       (user_id, daily_count, last_reset, premium_until, total_asked, last_seen, free_bonus, referred_by, username, first_name)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)
      ON CONFLICT (user_id) DO UPDATE SET
        daily_count=$2, last_reset=$3, premium_until=$4,
-       total_asked=$5, last_seen=$6, free_bonus=$7, referred_by=$8`,
+       total_asked=$5, last_seen=$6, free_bonus=$7, referred_by=$8,
+       username=COALESCE($9, users.username),
+       first_name=COALESCE($10, users.first_name)`,
     [id, u.dailyCount, u.lastReset, u.premiumUntil || null,
-     u.totalAsked, u.lastSeen || null, u.freeBonus, u.referredBy || null]
+     u.totalAsked, u.lastSeen || null, u.freeBonus, u.referredBy || null,
+     u.username || null, u.firstName || null]
   ).catch(e => console.error('[DB] saveUser:', e.message));
 }
 
@@ -116,7 +126,7 @@ function dbSaveQuestion(q) {
 function hydrate(userId) {
   const id = String(userId);
   if (!memUsers[id]) {
-    memUsers[id] = { dailyCount: 0, lastReset: today(), premiumUntil: null, totalAsked: 0, lastSeen: null, freeBonus: 0, referredBy: null };
+    memUsers[id] = { dailyCount: 0, lastReset: today(), premiumUntil: null, totalAsked: 0, lastSeen: null, freeBonus: 0, referredBy: null, username: null, firstName: null };
   }
   const u = memUsers[id];
   if (u.lastReset !== today()) { u.dailyCount = 0; u.lastReset = today(); }
@@ -124,7 +134,7 @@ function hydrate(userId) {
   return { u, id };
 }
 
-// ─── Public API (синхронний — читає з пам'яті, пише в DB асинхронно) ─
+// ─── Public API ────────────────────────────────────────────────────
 function getStatus(userId) {
   const { u } = hydrate(userId);
   const isPremium = !!(u.premiumUntil && new Date(u.premiumUntil) > new Date());
@@ -143,6 +153,16 @@ function increment(userId) {
   u.totalAsked = (u.totalAsked || 0) + 1;
   u.lastSeen   = Date.now();
   dbSaveUser(id, u);
+}
+
+function setUserInfo(userId, { username, firstName } = {}) {
+  try {
+    const { u, id } = hydrate(userId);
+    let changed = false;
+    if (username  && u.username  !== username)  { u.username  = String(username);  changed = true; }
+    if (firstName && u.firstName !== firstName) { u.firstName = String(firstName); changed = true; }
+    if (changed) dbSaveUser(id, u);
+  } catch {}
 }
 
 function activatePremium(userId, days = 30) {
@@ -192,6 +212,30 @@ function logQuestion(userId, question, answer, category) {
   dbSaveQuestion(q);
 }
 
+// ─── All questions for a specific user (queries DB directly) ───────
+async function getUserQuestions(userId) {
+  const id = String(userId);
+  if (dbReady && pool) {
+    try {
+      const { rows } = await pool.query(
+        'SELECT * FROM questions WHERE user_id = $1 ORDER BY ts DESC',
+        [id]
+      );
+      return rows.map(r => ({
+        userId:   r.user_id,
+        question: r.question,
+        category: r.category || null,
+        color:    r.color,
+        verdict:  r.verdict,
+        ts:       r.ts ? Number(r.ts) : Date.now(),
+      }));
+    } catch (e) {
+      console.error('[DB] getUserQuestions:', e.message);
+    }
+  }
+  return questionLog.filter(q => q.userId === id);
+}
+
 function getStats() {
   const todayStr = today();
   const now      = new Date();
@@ -202,7 +246,7 @@ function getStats() {
     totalQuestions += (u.totalAsked || 0);
     if (u.lastReset === todayStr) questionsToday += (u.dailyCount || 0);
   }
-  const hourAgo          = Date.now() - 3_600_000;
+  const hourAgo           = Date.now() - 3_600_000;
   const questionsLastHour = questionLog.filter(q => q.ts > hourAgo).length;
   return { totalUsers, premiumUsers, questionsToday, questionsLastHour, totalQuestions, loggedQuestions: questionLog.length, dbReady };
 }
@@ -210,13 +254,15 @@ function getStats() {
 function getUsers() {
   const now = new Date();
   return Object.entries(memUsers).map(([id, u]) => ({
-    userId:      id,
-    totalAsked:  u.totalAsked  || 0,
-    dailyCount:  u.dailyCount  || 0,
-    freeBonus:   u.freeBonus   || 0,
-    isPremium:   !!(u.premiumUntil && new Date(u.premiumUntil) > now),
+    userId:       id,
+    totalAsked:   u.totalAsked  || 0,
+    dailyCount:   u.dailyCount  || 0,
+    freeBonus:    u.freeBonus   || 0,
+    isPremium:    !!(u.premiumUntil && new Date(u.premiumUntil) > now),
     premiumUntil: u.premiumUntil || null,
-    lastSeen:    u.lastSeen    || null,
+    lastSeen:     u.lastSeen    || null,
+    username:     u.username    || null,
+    firstName:    u.firstName   || null,
   })).sort((a, b) => b.totalAsked - a.totalAsked);
 }
 
@@ -224,4 +270,8 @@ function getQuestions(limit = 200) {
   return questionLog.slice(0, limit);
 }
 
-module.exports = { getStatus, increment, activatePremium, addBonus, applyReferral, logQuestion, getStats, getUsers, getQuestions };
+module.exports = {
+  getStatus, increment, setUserInfo, activatePremium,
+  addBonus, applyReferral, logQuestion, getUserQuestions,
+  getStats, getUsers, getQuestions,
+};
