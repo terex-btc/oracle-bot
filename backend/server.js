@@ -430,6 +430,54 @@ adminApi.get('/questions', (req, res) => {
   catch (e) { res.status(500).json({ error: e.message }); }
 });
 
+adminApi.post('/broadcast', async (req, res) => {
+  if (!bot) return res.status(503).json({ error: 'Bot not available' });
+  const { text, btn1Text, btn1Url, btn2Text, btn2Url, imageUrl } = req.body;
+  if (!text?.trim()) return res.status(400).json({ error: 'Текст обовʼязковий' });
+
+  const users = getUsers();
+  const total = users.length;
+
+  // Respond immediately — send in background via SSE progress
+  res.json({ ok: true, total });
+
+  let sent = 0, failed = 0;
+
+  const keyboard = [];
+  if (btn1Text && btn1Url) keyboard.push({ text: btn1Text, url: btn1Url });
+  if (btn2Text && btn2Url) keyboard.push({ text: btn2Text, url: btn2Url });
+  const opts = {
+    parse_mode: 'Markdown',
+    ...(keyboard.length ? { reply_markup: { inline_keyboard: [keyboard] } } : {}),
+    disable_web_page_preview: true,
+  };
+
+  function emitProgress(done = false) {
+    const payload = JSON.stringify({ sent, failed, total });
+    const ev = done ? 'broadcast_done' : 'broadcast';
+    for (const c of sseClients) c.write(`event: ${ev}\ndata: ${payload}\n\n`);
+  }
+
+  for (const u of users) {
+    try {
+      if (imageUrl?.trim()) {
+        await bot.sendPhoto(u.userId, imageUrl.trim(), { caption: text, ...opts });
+      } else {
+        await bot.sendMessage(u.userId, text, opts);
+      }
+      sent++;
+    } catch (e) {
+      failed++;
+      // 403 = user blocked bot, 400 = chat not found — expected, skip silently
+    }
+    const done = sent + failed;
+    if (done % 20 === 0 || done === total) emitProgress(done === total);
+    await new Promise(r => setTimeout(r, 50)); // ~20 msg/sec — safe for Telegram
+  }
+
+  console.log(`[Broadcast] ${sent} sent, ${failed} failed of ${total}`);
+});
+
 adminApi.get('/user/:userId/questions', async (req, res) => {
   try { res.json(await getUserQuestions(req.params.userId)); }
   catch (e) { res.status(500).json({ error: e.message }); }
