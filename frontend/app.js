@@ -472,8 +472,10 @@ document.querySelectorAll('.cat-chip').forEach(chip => {
 });
 
 // ─── User State ────────────────────────────────────────────────
-const userId = tg?.initDataUnsafe?.user?.id ?? 'guest';
-let userStatus = { canAsk: true, remaining: 2, isPremium: false };
+const tgUser      = tg?.initDataUnsafe?.user;
+const userId      = tgUser?.id      ?? 'guest';
+const tgUsername  = tgUser?.username   ?? null;   // @нік без @
+const tgFirstName = tgUser?.first_name ?? null;
 
 async function fetchStatus() {
   if (userId === 'guest') return;
@@ -482,6 +484,14 @@ async function fetchStatus() {
     userStatus = await r.json();
     updateCounter();
   } catch {}
+  // Синхронізуємо нік — fire-and-forget
+  if (tgUsername || tgFirstName) {
+    fetch('/api/user/sync', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ userId, username: tgUsername, firstName: tgFirstName }),
+    }).catch(() => {});
+  }
 }
 
 function updateCounter() {
@@ -575,7 +585,12 @@ async function askOracle() {
   const apiPromise = fetch('/api/ask', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ question, userId, category: selectedCategory || undefined })
+    body: JSON.stringify({
+      question, userId,
+      category:  selectedCategory || undefined,
+      username:  tgUsername  || undefined,
+      firstName: tgFirstName || undefined,
+    })
   });
 
   // Драматична анімація "оракул думає"

@@ -366,8 +366,17 @@ api.post('/user/:userId/invoice', async (req, res) => {
   }
 });
 
+api.post('/user/sync', (req, res) => {
+  const { userId, username, firstName } = req.body;
+  if (userId && userId !== 'guest') setUserInfo(userId, { username, firstName });
+  res.json({ ok: true });
+});
+
 api.post('/ask', (req, res) => {
-  const { question, userId, category } = req.body;
+  const { question, userId, category, username, firstName } = req.body;
+  if (userId && userId !== 'guest' && (username || firstName)) {
+    setUserInfo(userId, { username, firstName });
+  }
   if (!question || !question.trim()) {
     return res.status(400).json({ error: 'Вопрос не может быть пустым' });
   }
