@@ -60,6 +60,29 @@ async function initDb() {
     await pool.query(`CREATE INDEX IF NOT EXISTS idx_q_ts  ON questions(ts DESC)`);
     await pool.query(`CREATE INDEX IF NOT EXISTS idx_q_uid ON questions(user_id)`);
 
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS gifts (
+        code        TEXT PRIMARY KEY,
+        from_user   TEXT,
+        days        INTEGER NOT NULL DEFAULT 30,
+        created_at  BIGINT,
+        used_by     TEXT,
+        used_at     BIGINT
+      )
+    `);
+
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS events (
+        id      SERIAL PRIMARY KEY,
+        user_id TEXT,
+        event   TEXT,
+        variant TEXT,
+        ts      BIGINT
+      )
+    `);
+    await pool.query(`CREATE INDEX IF NOT EXISTS idx_ev_ts  ON events(ts DESC)`);
+    await pool.query(`CREATE INDEX IF NOT EXISTS idx_ev_evt ON events(event)`);
+
     const { rows: uRows } = await pool.query('SELECT * FROM users');
     for (const r of uRows) {
       memUsers[r.user_id] = {
@@ -87,8 +110,14 @@ async function initDb() {
       ts:       r.ts ? Number(r.ts) : Date.now(),
     }));
 
+    // Load unredeemed gifts into memory
+    const { rows: gRows } = await pool.query('SELECT * FROM gifts WHERE used_by IS NULL');
+    for (const r of gRows) {
+      giftMap.set(r.code, { fromUserId: r.from_user, days: r.days, createdAt: Number(r.created_at) });
+    }
+
     dbReady = true;
-    console.log(`[DB] PostgreSQL ready — ${uRows.length} users, ${qRows.length} questions`);
+    console.log(`[DB] PostgreSQL ready — ${uRows.length} users, ${qRows.length} questions, ${gRows.length} gifts`);
   } catch (e) {
     console.error('[DB] Init failed:', e.message);
   }
@@ -270,8 +299,94 @@ function getQuestions(limit = 200) {
   return questionLog.slice(0, limit);
 }
 
+// ─── Gift system ───────────────────────────────────────────────
+const giftMap = new Map();
+
+function genCode() {
+  return 'ORC' + Math.random().toString(36).slice(2, 8).toUpperCase();
+}
+
+function createGift(fromUserId, days) {
+  const code = genCode();
+  const gift = { fromUserId: String(fromUserId), days, createdAt: Date.now() };
+  giftMap.set(code, gift);
+  if (dbReady && pool) {
+    pool.query(
+      'INSERT INTO gifts (code, from_user, days, created_at) VALUES ($1,$2,$3,$4) ON CONFLICT DO NOTHING',
+      [code, gift.fromUserId, days, gift.createdAt]
+    ).catch(e => console.error('[DB] createGift:', e.message));
+  }
+  return code;
+}
+
+async function redeemGift(code, toUserId) {
+  const id = String(toUserId);
+  let gift = giftMap.get(code);
+
+  if (!gift && dbReady && pool) {
+    try {
+      const { rows } = await pool.query('SELECT * FROM gifts WHERE code = $1', [code]);
+      if (rows[0]) {
+        gift = { fromUserId: rows[0].from_user, days: rows[0].days, createdAt: Number(rows[0].created_at), usedBy: rows[0].used_by || null };
+        giftMap.set(code, gift);
+      }
+    } catch {}
+  }
+
+  if (!gift)           return { ok: false, error: 'Подарунковий код не знайдено' };
+  if (gift.usedBy)     return { ok: false, error: 'Цей код вже використано' };
+  if (gift.fromUserId === id) return { ok: false, error: 'Не можна активувати власний подарунок' };
+
+  gift.usedBy = id;
+  const until = activatePremium(id, gift.days);
+
+  if (dbReady && pool) {
+    pool.query('UPDATE gifts SET used_by=$1, used_at=$2 WHERE code=$3', [id, Date.now(), code])
+      .catch(e => console.error('[DB] redeemGift:', e.message));
+  }
+  return { ok: true, days: gift.days, fromUserId: gift.fromUserId, until };
+}
+
+// ─── Funnel events ────────────────────────────────────────────
+const eventLog2 = [];
+const EV_MAX    = 10_000;
+
+function logEvent(userId, event, variant = null) {
+  const e = { userId: userId ? String(userId) : 'guest', event, variant, ts: Date.now() };
+  eventLog2.unshift(e);
+  if (eventLog2.length > EV_MAX) eventLog2.length = EV_MAX;
+  if (dbReady && pool) {
+    pool.query('INSERT INTO events (user_id, event, variant, ts) VALUES ($1,$2,$3,$4)',
+      [e.userId, e.event, e.variant, e.ts]
+    ).catch(() => {});
+  }
+}
+
+function getFunnelStats() {
+  const week   = Date.now() - 7 * 86_400_000;
+  const recent = eventLog2.filter(e => e.ts > week);
+  const counts = {};
+  const ab     = {};
+  for (const e of recent) {
+    counts[e.event] = (counts[e.event] || 0) + 1;
+    if (e.variant) {
+      if (!ab[e.variant]) ab[e.variant] = {};
+      ab[e.variant][e.event] = (ab[e.variant][e.event] || 0) + 1;
+    }
+  }
+  return { counts, ab, total: eventLog2.length };
+}
+
+// ─── A/B variant ──────────────────────────────────────────────
+function getABVariant(userId) {
+  const s = String(userId || '');
+  const h = s.split('').reduce((a, c) => a + c.charCodeAt(0), 0);
+  return h % 2 === 0 ? 'A' : 'B';
+}
+
 module.exports = {
   getStatus, increment, setUserInfo, activatePremium,
   addBonus, applyReferral, logQuestion, getUserQuestions,
   getStats, getUsers, getQuestions,
+  createGift, redeemGift, logEvent, getFunnelStats, getABVariant,
 };

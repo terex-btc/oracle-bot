@@ -5,22 +5,31 @@ const path       = require('path');
 const https      = require('https');
 const TelegramBot = require('node-telegram-bot-api');
 const { getOracleAnswer } = require('./config/oracleAnswers');
-let getStatus, increment, activatePremium, addBonus, applyReferral, logQuestion, getUserQuestions, getStats, getUsers, getQuestions;
+let getStatus, increment, activatePremium, addBonus, applyReferral, logQuestion,
+    getUserQuestions, getStats, getUsers, getQuestions,
+    createGift, redeemGift, logEvent, getFunnelStats, getABVariant;
 try {
-  ({ getStatus, increment, setUserInfo, activatePremium, addBonus, applyReferral, logQuestion, getUserQuestions, getStats, getUsers, getQuestions } = require('./services/userService'));
+  ({ getStatus, increment, setUserInfo, activatePremium, addBonus, applyReferral,
+     logQuestion, getUserQuestions, getStats, getUsers, getQuestions,
+     createGift, redeemGift, logEvent, getFunnelStats, getABVariant } = require('./services/userService'));
 } catch (e) {
   console.error('[userService] Load error:', e.message);
-  getStatus       = () => ({ canAsk: true, remaining: 2, isPremium: false });
-  increment       = () => {};
-  setUserInfo     = () => {};
-  activatePremium = () => new Date().toISOString();
-  addBonus        = () => {};
-  applyReferral   = () => false;
-  logQuestion     = () => {};
+  getStatus        = () => ({ canAsk: true, remaining: 2, isPremium: false });
+  increment        = () => {};
+  setUserInfo      = () => {};
+  activatePremium  = () => new Date().toISOString();
+  addBonus         = () => {};
+  applyReferral    = () => false;
+  logQuestion      = () => {};
   getUserQuestions = async () => [];
-  getStats        = () => ({});
-  getUsers        = () => [];
-  getQuestions    = () => [];
+  getStats         = () => ({});
+  getUsers         = () => [];
+  getQuestions     = () => [];
+  createGift       = () => 'DEMO';
+  redeemGift       = async () => ({ ok: false, error: 'DB unavailable' });
+  logEvent         = () => {};
+  getFunnelStats   = () => ({ counts: {}, ab: {} });
+  getABVariant     = () => 'A';
 }
 
 const app          = express();
@@ -92,6 +101,23 @@ if (BOT_TOKEN) {
     const name    = msg.from?.first_name || 'Мандрівнику';
     const param   = (match[1] || '').trim();
 
+    // Подарунок: ?start=gift_CODE
+    if (userId && param.startsWith('gift_')) {
+      const code = param.slice(5).toUpperCase();
+      const result = await redeemGift(code, userId);
+      if (result.ok) {
+        const until = new Date(result.until).toLocaleDateString('uk', { day: 'numeric', month: 'long' });
+        await bot.sendMessage(chatId,
+          `🎁 *Подарунок активовано\\!*\n\n⭐ Преміум на *${result.days} днів* активовано до *${escMd(until)}*\n\n🔮 Задавай питання без обмежень\\!`,
+          { parse_mode: 'MarkdownV2', reply_markup: { inline_keyboard: [[{ text: '🔮 Відкрити Оракул', web_app: { url: WEBAPP_URL } }]] } }
+        );
+        try { await bot.sendMessage(result.fromUserId, `🎉 Твій подарунок активовано! Друг отримав Преміум на ${result.days} днів ✨`); } catch {}
+        return;
+      } else {
+        await bot.sendMessage(chatId, `❌ ${result.error}`);
+      }
+    }
+
     // Реферал
     if (userId && param.startsWith('ref_')) {
       const referrerId = param.replace('ref_', '');
@@ -108,20 +134,20 @@ if (BOT_TOKEN) {
     const isNewUser = status && status.totalAsked === 0 && status.dailyCount === 0;
 
     if (isNewUser) {
-      // First-time onboarding
+      // Activate 2-day free trial for brand-new users
+      if (userId) activatePremium(userId, 2);
+
       const refLink = `https://t.me/oracle_666bot?start=ref_${userId}`;
       await bot.sendMessage(chatId,
         `🔮 *Ласкаво просимо, ${escMd(name)}\\!*\n\n` +
-        `Я — стародавній Оракул Долі\\.  \n` +
+        `Я — стародавній Оракул Долі\\.\n` +
         `Поклади серце в питання — і Всесвіт відповість\\.\n\n` +
+        `🎁 *Тобі активовано 2 дні Преміум безкоштовно\\!*\n` +
+        `Задавай питання без обмежень — подарунок від Оракула\\.\n\n` +
         `*Як це працює:*\n` +
         `🌐 Натисни кнопку нижче → відкриється магічна куля\n` +
         `💭 Напиши питання у форматі Так/Ні\n` +
         `🔮 Отримай відповідь зірок\n\n` +
-        `*Твій ліміт:*\n` +
-        `🆓 *2 безкоштовних питання* щодня — безплатно\n` +
-        `🔗 Запроси друга → \\+3 питання кожному\n` +
-        `⭐ Безлімітно з Преміум від 100 ★\n\n` +
         `_Доля чекає твого першого питання\\.\\.\\._`,
         {
           parse_mode: 'MarkdownV2',
@@ -129,7 +155,6 @@ if (BOT_TOKEN) {
             inline_keyboard: [
               [{ text: '🔮 Відкрити Оракул Долі', web_app: { url: WEBAPP_URL } }],
               [{ text: '🔗 Запросити друга → +3 питання', url: `https://t.me/share/url?url=${encodeURIComponent(refLink)}` }],
-              [{ text: '⭐ Преміум від 100 ★', callback_data: 'buy_premium' }],
             ],
           },
         }
@@ -205,6 +230,8 @@ if (BOT_TOKEN) {
     if      (data === 'buy_premium' || data === 'buy_month') await sendPremiumInvoice(chatId, userId, 'month');
     else if (data === 'buy_week')     await sendPremiumInvoice(chatId, userId, 'week');
     else if (data === 'buy_lifetime') await sendPremiumInvoice(chatId, userId, 'lifetime');
+    else if (data === 'gift_7')       await sendGiftInvoice(chatId, userId, 'gift7');
+    else if (data === 'gift_30')      await sendGiftInvoice(chatId, userId, 'gift30');
     else if (data === 'get_ref') {
       const refLink = `https://t.me/oracle_666bot?start=ref_${userId}`;
       await bot.sendMessage(chatId,
@@ -244,9 +271,60 @@ if (BOT_TOKEN) {
 
   bot.onText(/\/help/, async (msg) => {
     await bot.sendMessage(msg.chat.id,
-      `🔮 *Оракул Судьбы*\n\n/start — Відкрити бота\n/ask [питання] — Швидке питання\n/premium — Купити преміум\n/ref — Реферальне посилання\n/help — Довідка\n\n🆓 Безкоштовно: 2 питання / день\n⭐ Преміум від 100 ★`,
+      `🔮 *Оракул Судьбы*\n\n/start — Відкрити бота\n/ask [питання] — Швидке питання\n/premium — Купити преміум\n/gift — Подарувати преміум другу\n/ref — Реферальне посилання\n/help — Довідка\n\n🆓 Безкоштовно: 2 питання / день\n⭐ Преміум від 100 ★`,
       { parse_mode: 'Markdown', reply_markup: { inline_keyboard: [[{ text: '🔮 Відкрити Оракул', web_app: { url: WEBAPP_URL } }]] } }
     );
+  });
+
+  // /gift — gifting flow
+  bot.onText(/\/gift/, async (msg) => {
+    await bot.sendMessage(msg.chat.id,
+      `🎁 *Подаруй Преміум другу\\!*\n\nОбери план — і ми надішлемо тобі посилання\\-подарунок, яким можна поділитись:`,
+      {
+        parse_mode: 'MarkdownV2',
+        reply_markup: { inline_keyboard: [
+          [{ text: '🎁 7 днів Преміум — 80 ★',  callback_data: 'gift_7'  }],
+          [{ text: '🎁 30 днів Преміум — 250 ★', callback_data: 'gift_30' }],
+        ]},
+      }
+    );
+  });
+
+  // Inline mode — @oracle_666bot питання
+  bot.on('inline_query', async (query) => {
+    const question = (query.query || '').trim();
+    if (query.from?.id) setUserInfo(query.from.id, { username: query.from?.username, firstName: query.from?.first_name });
+
+    const SUGGESTIONS = [
+      'Чи принесе мені сьогодні удачу?',
+      'Чи варто мені довіритись цій людині?',
+      'Чи правильний шлях я обрав?',
+      'Чи буде все добре?',
+    ];
+
+    const buildResult = (id, q, a) => {
+      const em = a.color === 'yes' ? '🟢' : a.color === 'no' ? '🔴' : '🟡';
+      return {
+        type: 'article', id: String(id),
+        title: `${em} ${a.verdict}`,
+        description: q,
+        input_message_content: {
+          message_text: `🔮 *Оракул Долі відповів\\!*\n\n❓ _${escMd(q)}_\n\n${em} *${escMd(a.verdict)}*\n_${escMd(a.message)}_\n\n✨ [Запитай і ти](https://t.me/oracle_666bot/app)`,
+          parse_mode: 'MarkdownV2',
+          disable_web_page_preview: true,
+        },
+        reply_markup: { inline_keyboard: [[{ text: '🔮 Запитати Оракул', url: 'https://t.me/oracle_666bot/app' }]] },
+      };
+    };
+
+    const results = [];
+    if (question) {
+      results.push(buildResult(1, question, getOracleAnswer()));
+    } else {
+      SUGGESTIONS.forEach((q, i) => results.push(buildResult(i + 1, q, getOracleAnswer())));
+    }
+
+    try { await bot.answerInlineQuery(query.id, results, { cache_time: 0, is_personal: true }); } catch {}
   });
 
   // ── Оплата Stars ────────────────────────────────────────────────
@@ -260,6 +338,25 @@ if (BOT_TOKEN) {
     if (userId) setUserInfo(userId, { username: msg.from?.username, firstName: msg.from?.first_name });
     const payload = msg.successful_payment.invoice_payload;
     if (!payload.startsWith('oracle_')) return;
+
+    // Подарунки: oracle_gift7_UID / oracle_gift30_UID
+    if (payload.startsWith('oracle_gift')) {
+      const giftPlanKey = Object.keys(GIFT_PLANS).find(k => payload.startsWith(`oracle_${k}_`));
+      const gp = giftPlanKey ? GIFT_PLANS[giftPlanKey] : { days: 30 };
+      const code = createGift(userId, gp.days);
+      const shareUrl = `https://t.me/oracle_666bot?start=gift_${code}`;
+      await bot.sendMessage(msg.chat.id,
+        `🎁 *Подарунок готовий\\!*\n\n*${escMd(gp.days + ' днів Преміум')}* — посилання для друга:\n\n\`${code}\`\n\n${escMd(shareUrl)}\n\n_Коли друг натисне посилання — він отримає Преміум автоматично\\!_`,
+        {
+          parse_mode: 'MarkdownV2',
+          reply_markup: { inline_keyboard: [[
+            { text: '🎁 Поділитись подарунком', url: `https://t.me/share/url?url=${encodeURIComponent(shareUrl)}&text=${encodeURIComponent('🔮 Тримай подарунок — Оракул Долі чекає тебе!')}` }
+          ]]}
+        }
+      );
+      console.log(`[Gift] userId=${userId} code=${code} days=${gp.days}`);
+      return;
+    }
 
     // Пакети питань: oracle_pack5_UID / oracle_pack20_UID
     if (payload.startsWith('oracle_pack')) {
@@ -297,9 +394,47 @@ if (BOT_TOKEN) {
     { command: 'start',   description: '🔮 Відкрити Оракул Долі' },
     { command: 'ask',     description: '❓ Швидке питання оракулу' },
     { command: 'premium', description: '⭐ Купити Преміум' },
+    { command: 'gift',    description: '🎁 Подарувати Преміум другу' },
     { command: 'ref',     description: '🔗 Реферальне посилання (+3 питання)' },
     { command: 'help',    description: '📖 Допомога' },
   ]}).catch(() => {});
+
+  // ── Daily question scheduler (fires at 10:00 UTC = 13:00 Kyiv) ──
+  const DAILY_QUESTIONS = [
+    'Чи принесе мені сьогоднішній день успіх?',
+    'Чи варто мені довіритись своєму серцю зараз?',
+    'Чи наближаюсь я до своєї мети?',
+    'Чи час відпустити минуле?',
+    'Чи правильний шлях я обрав?',
+    'Чи принесе цей тиждень мені удачу?',
+    'Чи варто ризикнути заради великої мети?',
+    'Чи щаслива доля зараз на моєму боці?',
+    'Чи варто продовжувати те, що я почав?',
+    'Чи зміниться моє становище на краще?',
+  ];
+  let lastDailyDate = null;
+
+  setInterval(async () => {
+    const now = new Date();
+    const dateStr = now.toISOString().slice(0, 10);
+    if (now.getUTCHours() !== 10 || lastDailyDate === dateStr) return;
+    lastDailyDate = dateStr;
+
+    const users = getUsers();
+    const active = users.filter(u => u.lastSeen && Date.now() - u.lastSeen < 30 * 86_400_000);
+    const q = DAILY_QUESTIONS[new Date().getDate() % DAILY_QUESTIONS.length];
+    console.log(`[Daily] Sending question to ${active.length} users`);
+
+    for (const u of active) {
+      try {
+        await bot.sendMessage(u.userId,
+          `🔮 *Питання дня від Оракула:*\n\n_"${q}"_\n\nНатисни — і дізнайся відповідь долі\\.`,
+          { parse_mode: 'MarkdownV2', reply_markup: { inline_keyboard: [[{ text: '🔮 Отримати відповідь', web_app: { url: WEBAPP_URL } }]] } }
+        );
+      } catch {}
+      await new Promise(r => setTimeout(r, 80));
+    }
+  }, 60_000);
 
   tgApi('setMyDescription', { description:
     'Оракул Долі — містичний бот, що відповідає на питання долі.\n\n' +
@@ -325,6 +460,23 @@ const PACK_CONFIG = {
   pack5:  { questions: 5,  stars: 30, title: '🔮 Пакет +5 питань',  desc: '5 додаткових питань Оракулу — без строку дії!' },
   pack20: { questions: 20, stars: 80, title: '🔮 Пакет +20 питань', desc: '20 додаткових питань Оракулу — без строку дії!' },
 };
+
+const GIFT_PLANS = {
+  gift7:  { days: 7,  stars: 80,  title: '🎁 Подарунок Oracle Premium 7 днів',  desc: '7 днів безлімітних питань Оракулу у подарунок' },
+  gift30: { days: 30, stars: 250, title: '🎁 Подарунок Oracle Premium 30 днів', desc: '30 днів безлімітних питань Оракулу у подарунок' },
+};
+
+async function sendGiftInvoice(chatId, userId, plan) {
+  const p = GIFT_PLANS[plan];
+  if (!p) return;
+  const invoiceData = {
+    chat_id: chatId, title: p.title, description: p.desc,
+    payload: `oracle_${plan}_${userId}`, currency: 'XTR',
+    prices: [{ label: p.title, amount: p.stars }],
+  };
+  try { await tgApi('sendInvoice', { ...invoiceData, photo_url: WEBAPP_URL + '/preview.jpg' }); }
+  catch { await tgApi('sendInvoice', invoiceData); }
+}
 
 async function sendPremiumInvoice(chatId, userId, plan = 'month') {
   const p = PLAN_CONFIG[plan] || PLAN_CONFIG.month;
@@ -354,12 +506,14 @@ api.get('/user/:userId/status', (req, res) => {
   try {
     const { userId } = req.params;
     if (!userId || userId === 'null' || userId === 'undefined') {
-      return res.json({ canAsk: true, remaining: 2, isPremium: false, guest: true });
+      return res.json({ canAsk: true, remaining: 2, isPremium: false, guest: true, variant: 'A' });
     }
-    res.json(getStatus(userId));
+    const status  = getStatus(userId);
+    const variant = getABVariant(userId);
+    res.json({ ...status, variant });
   } catch (e) {
     console.error('[status]', e.message);
-    res.json({ canAsk: true, remaining: 2, isPremium: false, error: e.message });
+    res.json({ canAsk: true, remaining: 2, isPremium: false, error: e.message, variant: 'A' });
   }
 });
 
@@ -390,6 +544,12 @@ api.post('/user/:userId/invoice', async (req, res) => {
 api.post('/user/sync', (req, res) => {
   const { userId, username, firstName } = req.body;
   if (userId && userId !== 'guest') setUserInfo(userId, { username, firstName });
+  res.json({ ok: true });
+});
+
+api.post('/event', (req, res) => {
+  const { userId, event, variant } = req.body || {};
+  if (event) logEvent(userId || 'guest', event, variant || null);
   res.json({ ok: true });
 });
 
@@ -521,6 +681,11 @@ adminApi.post('/broadcast', async (req, res) => {
 
 adminApi.get('/user/:userId/questions', async (req, res) => {
   try { res.json(await getUserQuestions(req.params.userId)); }
+  catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+adminApi.get('/funnel', (req, res) => {
+  try { res.json(getFunnelStats()); }
   catch (e) { res.status(500).json({ error: e.message }); }
 });
 

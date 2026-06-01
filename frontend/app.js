@@ -344,6 +344,8 @@ const LANGS = {
     historyEmpty:     'Ты ещё не задавал вопросов Оракулу',
     historyLoading:   'Загрузка...',
     greeting:         name => `${name}, `,
+    paywallTitleB:    '⏰ Ответ готов!',
+    paywallSubB:      'Оракул знает — открой доступ',
     btnComeBack:      '🌙 Вернуться завтра (бесплатно)',
     langBtn:          '🌐 UA',
   },
@@ -396,6 +398,8 @@ const LANGS = {
     historyEmpty:     'Ти ще не ставив питань Оракулу',
     historyLoading:   'Завантаження...',
     greeting:         name => `${name}, `,
+    paywallTitleB:    '⏰ Відповідь готова!',
+    paywallSubB:      'Оракул знає — відкрий доступ',
     btnComeBack:      '🌙 Повернутись завтра (безкоштовно)',
     langBtn:          '🌐 RU',
   },
@@ -501,17 +505,32 @@ document.querySelectorAll('.cat-chip').forEach(chip => {
 // ─── User State ────────────────────────────────────────────────
 const tgUser      = tg?.initDataUnsafe?.user;
 const userId      = tgUser?.id      ?? 'guest';
-const tgUsername  = tgUser?.username   ?? null;   // @нік без @
+const tgUsername  = tgUser?.username   ?? null;
 const tgFirstName = tgUser?.first_name ?? null;
+
+let abVariant  = 'A';
+let lastAnswer = null;
+
+// Fire-and-forget funnel event
+function trackEvent(event) {
+  if (userId === 'guest') return;
+  fetch('/api/event', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ userId, event, variant: abVariant }),
+  }).catch(() => {});
+}
 
 async function fetchStatus() {
   if (userId === 'guest') return;
   try {
     const r = await fetch(`/api/user/${userId}/status`);
-    userStatus = await r.json();
+    const data = await r.json();
+    userStatus = data;
+    abVariant  = data.variant || 'A';
     updateCounter();
+    applyABVariant();
   } catch {}
-  // Синхронізуємо нік — fire-and-forget
   if (tgUsername || tgFirstName) {
     fetch('/api/user/sync', {
       method: 'POST',
@@ -519,6 +538,15 @@ async function fetchStatus() {
       body: JSON.stringify({ userId, username: tgUsername, firstName: tgFirstName }),
     }).catch(() => {});
   }
+}
+
+function applyABVariant() {
+  if (abVariant !== 'B') return;
+  const L = LANGS[currentLang];
+  const pt = document.querySelector('.paywall-title');
+  const ps = document.querySelector('.paywall-sub');
+  if (pt) pt.textContent = L.paywallTitleB || '⏰ Відповідь готова!';
+  if (ps) ps.textContent = L.paywallSubB   || 'Оракул знає — відкрий доступ';
 }
 
 function updateCounter() {
@@ -647,6 +675,8 @@ async function askOracle() {
 // ─── Paywall ────────────────────────────────────────────────────
 function showPaywall() {
   showScreen('screen-paywall');
+  applyABVariant();
+  trackEvent('paywall_shown');
   if (tg?.HapticFeedback) tg.HapticFeedback.notificationOccurred('error');
 }
 
@@ -666,6 +696,7 @@ async function buyPremiumFlow(btn, plan = 'month') {
   btn.disabled = true;
   const orig = btn.textContent;
   btn.textContent = '⏳...';
+  trackEvent('invoice_click');
   try {
     const r = await fetch(`/api/user/${userId}/invoice`, {
       method: 'POST',
@@ -677,6 +708,7 @@ async function buyPremiumFlow(btn, plan = 'month') {
     if (tg?.openInvoice) {
       tg.openInvoice(data.url, async (status) => {
         if (status === 'paid') {
+          trackEvent('payment_success');
           await fetchStatus();
           showScreen('screen-home');
           orbStatus.textContent = LANGS[currentLang].orbPremium;
@@ -729,6 +761,7 @@ async function buyPackFlow(btn, pack) {
   btn.disabled = true;
   const orig = btn.textContent;
   btn.textContent = '⏳...';
+  trackEvent('pack_click');
   try {
     const r = await fetch(`/api/user/${userId}/invoice`, {
       method: 'POST',
@@ -823,6 +856,7 @@ fetchStatus();
 
 // ─── Show Answer ────────────────────────────────────────────────
 function showAnswer(question, answer) {
+  lastAnswer = answer;
   const ua = currentLang === 'ua';
   document.getElementById('answer-question').textContent = question;
   document.getElementById('answer-verdict').textContent  = ua ? (answer.verdict_ua || answer.verdict) : answer.verdict;
@@ -898,23 +932,140 @@ document.getElementById('btn-again').addEventListener('click', async () => {
 document.getElementById('lang-btn')?.addEventListener('click', toggleLang);
 applyLang();
 
-// ─── Share ─────────────────────────────────────────────────────
-document.getElementById('btn-share').addEventListener('click', () => {
-  const verdict  = document.getElementById('answer-verdict').textContent;
-  const question = document.getElementById('answer-question').textContent;
+// ─── Share image (Canvas) ──────────────────────────────────────
+function wrapCanvasText(ctx, text, x, y, maxWidth, lineH) {
+  const words = String(text).split(' ');
+  let line = '';
+  for (const word of words) {
+    const test = line + word + ' ';
+    if (ctx.measureText(test).width > maxWidth && line) {
+      ctx.fillText(line.trim(), x, y);
+      line = word + ' ';
+      y += lineH;
+    } else { line = test; }
+  }
+  if (line.trim()) ctx.fillText(line.trim(), x, y);
+  return y;
+}
+
+function buildShareCanvas(question, answer) {
+  const W = 540, H = 760;
+  const canvas = document.createElement('canvas');
+  canvas.width = W; canvas.height = H;
+  const ctx = canvas.getContext('2d');
+
+  // Background
+  const bg = ctx.createLinearGradient(0, 0, W, H);
+  bg.addColorStop(0, '#03020f');
+  bg.addColorStop(1, '#130625');
+  ctx.fillStyle = bg;
+  ctx.fillRect(0, 0, W, H);
+
+  // Glow blob
+  const glowCol = answer.color === 'yes' ? '#00f5a0' : answer.color === 'no' ? '#ff4d6d' : '#f5c842';
+  const glow = ctx.createRadialGradient(W / 2, H * 0.42, 0, W / 2, H * 0.42, 220);
+  glow.addColorStop(0, glowCol + '44');
+  glow.addColorStop(1, 'transparent');
+  ctx.fillStyle = glow;
+  ctx.fillRect(0, 0, W, H);
+
+  // Top badge
+  ctx.font = 'bold 15px Inter, sans-serif';
+  ctx.fillStyle = 'rgba(139,61,255,0.8)';
+  ctx.textAlign = 'center';
+  ctx.fillText('🔮  ОРАКУЛ ДОЛІ', W / 2, 52);
+
+  // Divider
+  ctx.strokeStyle = 'rgba(139,61,255,0.3)';
+  ctx.lineWidth = 1;
+  ctx.beginPath(); ctx.moveTo(60, 68); ctx.lineTo(W - 60, 68); ctx.stroke();
+
+  // Question label
+  ctx.font = '13px Inter, sans-serif';
+  ctx.fillStyle = 'rgba(255,255,255,0.35)';
+  ctx.fillText('питання', W / 2, 96);
+
+  // Question text
+  ctx.font = '600 17px Inter, sans-serif';
+  ctx.fillStyle = 'rgba(255,255,255,0.82)';
+  wrapCanvasText(ctx, `"${question}"`, W / 2, 126, W - 80, 26);
+
+  // Verdict glow
+  const vGlow = ctx.createRadialGradient(W / 2, H * 0.52, 0, W / 2, H * 0.52, 130);
+  vGlow.addColorStop(0, glowCol + '55');
+  vGlow.addColorStop(1, 'transparent');
+  ctx.fillStyle = vGlow;
+  ctx.fillRect(0, H * 0.38, W, H * 0.28);
+
+  // Verdict
+  const verdictText = (currentLang === 'ua' ? (answer.verdict_ua || answer.verdict) : answer.verdict) || '';
+  ctx.font = 'bold 44px Cinzel, Inter, sans-serif';
+  ctx.fillStyle = glowCol;
+  ctx.shadowColor = glowCol;
+  ctx.shadowBlur = 28;
+  ctx.fillText(verdictText, W / 2, H * 0.50);
+  ctx.shadowBlur = 0;
+
+  // Message
+  const msgText = (currentLang === 'ua' ? (answer.message_ua || answer.message) : answer.message) || '';
+  ctx.font = '15px Inter, sans-serif';
+  ctx.fillStyle = 'rgba(255,255,255,0.55)';
+  wrapCanvasText(ctx, msgText, W / 2, H * 0.62, W - 80, 24);
+
+  // Bottom divider
+  ctx.strokeStyle = 'rgba(139,61,255,0.25)';
+  ctx.beginPath(); ctx.moveTo(60, H - 72); ctx.lineTo(W - 60, H - 72); ctx.stroke();
+
+  // Bot link
+  ctx.font = 'bold 14px Inter, sans-serif';
+  ctx.fillStyle = 'rgba(139,61,255,0.7)';
+  ctx.fillText('@oracle_666bot', W / 2, H - 44);
+  ctx.font = '12px Inter, sans-serif';
+  ctx.fillStyle = 'rgba(255,255,255,0.25)';
+  ctx.fillText('t.me/oracle_666bot/app', W / 2, H - 22);
+
+  return canvas;
+}
+
+async function shareWithImage(question, answer) {
   const L = LANGS[currentLang];
+  const verdict = currentLang === 'ua' ? (answer.verdict_ua || answer.verdict) : answer.verdict;
   const text = L.shareText(question, verdict);
 
+  try {
+    const canvas = buildShareCanvas(question, answer);
+    const blob = await new Promise(res => canvas.toBlob(res, 'image/png'));
+    const file = new File([blob], 'oracle.png', { type: 'image/png' });
+    if (navigator.canShare?.({ files: [file] })) {
+      await navigator.share({ files: [file], text });
+      return;
+    }
+  } catch {}
+
+  // Fallback — text share
   if (tg?.switchInlineQuery) {
     tg.switchInlineQuery(text);
   } else if (navigator.share) {
     navigator.share({ text }).catch(() => {});
   } else {
+    const btn = document.getElementById('btn-share');
+    const orig = btn.textContent;
     navigator.clipboard?.writeText(text).then(() => {
-      const btn = document.getElementById('btn-share');
-      const orig = btn.textContent;
       btn.textContent = L.shareCopied;
       setTimeout(() => { btn.textContent = orig; }, 2000);
     });
+  }
+}
+
+document.getElementById('btn-share').addEventListener('click', async () => {
+  const question = document.getElementById('answer-question').textContent;
+  if (lastAnswer) {
+    await shareWithImage(question, lastAnswer);
+  } else {
+    const verdict = document.getElementById('answer-verdict').textContent;
+    const L = LANGS[currentLang];
+    const text = L.shareText(question, verdict);
+    if (tg?.switchInlineQuery) tg.switchInlineQuery(text);
+    else if (navigator.share) navigator.share({ text }).catch(() => {});
   }
 });
