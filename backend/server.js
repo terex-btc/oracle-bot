@@ -26,6 +26,7 @@ const PORT         = process.env.PORT || 3000;
 const BOT_TOKEN    = process.env.BOT_TOKEN;
 const WEBAPP_URL   = process.env.WEBAPP_URL || `http://localhost:${PORT}`;
 const ADMIN_SECRET = process.env.ADMIN_SECRET || (BOT_TOKEN ? BOT_TOKEN.slice(0, 12) : 'oracle_admin');
+const sseClients  = new Set();
 
 // ─── Middleware ───────────────────────────────────────────────────────────────
 app.use(cors());
@@ -33,6 +34,12 @@ app.use(express.json());
 // Статика ПІСЛЯ всіх API маршрутів (Express 5 — порядок важливий)
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
+function emitQuestion() {
+  for (const client of sseClients) {
+    client.write('event: question\ndata: {}\n\n');
+  }
+}
+
 function escMd(str) {
   return String(str || '').replace(/[_*[\]()~`>#+=|{}.!\\-]/g, '\\$&');
 }
@@ -369,17 +376,20 @@ api.post('/ask', (req, res) => {
       increment(userId);
       const answer = getOracleAnswer();
       logQuestion(userId, question.trim(), answer, category);
+      emitQuestion();
       return res.json({ question: question.trim(), answer, status: getStatus(userId) });
     } catch (e) {
       console.error('[ask/userService]', e.message || e);
       const answer = getOracleAnswer();
       logQuestion(userId, question.trim(), answer, category);
+      emitQuestion();
       return res.json({ question: question.trim(), answer });
     }
   }
 
   const answer = getOracleAnswer();
   logQuestion(userId, question.trim(), answer, category);
+  emitQuestion();
   res.json({ question: question.trim(), answer });
 });
 
@@ -410,9 +420,22 @@ adminApi.get('/users', (req, res) => {
 });
 
 adminApi.get('/questions', (req, res) => {
-  const limit = Math.min(parseInt(req.query.limit) || 100, 500);
+  const limit = Math.min(parseInt(req.query.limit) || 200, 1000);
   try { res.json(getQuestions(limit)); }
   catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+adminApi.get('/events', (req, res) => {
+  res.writeHead(200, {
+    'Content-Type':    'text/event-stream',
+    'Cache-Control':   'no-cache',
+    'Connection':      'keep-alive',
+    'X-Accel-Buffering': 'no',
+  });
+  res.write(': connected\n\n');
+  sseClients.add(res);
+  const ping = setInterval(() => res.write(': ping\n\n'), 25000);
+  req.on('close', () => { sseClients.delete(res); clearInterval(ping); });
 });
 
 app.use('/admin/api', adminApi);

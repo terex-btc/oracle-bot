@@ -46,9 +46,9 @@ header{background:var(--surf);border-bottom:1px solid var(--border);padding:0 24
 .btn-logout{border-color:transparent;color:var(--muted)}
 .btn-logout:hover{border-color:var(--red);color:var(--red)}
 
-/* ── Refresh progress bar ──────────────────────────────────────── */
-.refresh-track{height:3px;background:var(--border);position:relative;overflow:hidden}
-.refresh-fill{height:100%;background:var(--purple);transition:width 1s linear;width:100%}
+/* ── Live indicator ────────────────────────────────────────────── */
+.live-dot{width:8px;height:8px;border-radius:50%;background:var(--muted);display:inline-block;transition:background .4s}
+.live-dot.on{background:var(--green);box-shadow:0 0 6px var(--green)}
 
 /* ── Main content ──────────────────────────────────────────────── */
 main{flex:1;padding:20px 24px;max-width:1500px;margin:0 auto;width:100%}
@@ -168,14 +168,13 @@ tr:hover td{background:rgba(139,61,255,.05)}
     <div class="hdr-right">
       <span class="db-dot" id="db-dot"></span>
       <span class="db-label" id="db-label">DB</span>
+      <span class="live-dot" id="live-dot"></span>
+      <span style="font-size:12px;color:var(--muted)" id="live-label">підключення...</span>
       <button class="btn-sm" onclick="refreshAll(true)">↺ Оновити</button>
       <span class="update-info" id="last-updated" style="font-size:12px;color:var(--muted)"></span>
       <button class="btn-sm btn-logout" onclick="logout()">Вийти</button>
     </div>
   </header>
-  <div class="refresh-track">
-    <div class="refresh-fill" id="refresh-fill"></div>
-  </div>
 
   <main>
     <!-- Stats -->
@@ -266,10 +265,8 @@ let adminKey   = '';
 let allQ       = [];
 let allU       = [];
 let charts     = {};
-let cdTimer    = null;
 let clockTimer = null;
-let cdSec      = 30;
-const CD_MAX   = 30;
+let sse        = null;
 
 let fVerdict  = '';
 let fCategory = '';
@@ -292,7 +289,8 @@ async function doLogin() {
     localStorage.setItem('ora_admin', k);
     document.getElementById('login').style.display    = 'none';
     document.getElementById('dashboard').style.display = 'flex';
-    startTimers();
+    startClock();
+    connectSSE();
   } else {
     document.getElementById('login-err').textContent = 'Невірний пароль';
     adminKey = '';
@@ -301,34 +299,20 @@ async function doLogin() {
 
 function logout() {
   localStorage.removeItem('ora_admin');
-  stopTimers();
+  clearInterval(clockTimer);
+  clockTimer = null;
+  if (sse) { sse.close(); sse = null; }
   document.getElementById('dashboard').style.display = 'none';
   document.getElementById('login').style.display      = 'flex';
   document.getElementById('key-input').value = '';
   adminKey = '';
 }
 
-// ── Timers ────────────────────────────────────────────────────────────
-function startTimers() {
+// ── Clock ─────────────────────────────────────────────────────────────
+function startClock() {
+  clearInterval(clockTimer);
   updateClock();
   clockTimer = setInterval(updateClock, 1000);
-  cdSec = CD_MAX;
-  updateFill();
-  cdTimer = setInterval(() => {
-    cdSec--;
-    updateFill();
-    if (cdSec <= 0) { cdSec = CD_MAX; refreshAll(); }
-  }, 1000);
-}
-
-function stopTimers() {
-  clearInterval(cdTimer);
-  clearInterval(clockTimer);
-  cdTimer = clockTimer = null;
-}
-
-function updateFill() {
-  document.getElementById('refresh-fill').style.width = (cdSec / CD_MAX * 100) + '%';
 }
 
 function updateClock() {
@@ -336,6 +320,30 @@ function updateClock() {
     day: '2-digit', month: '2-digit', year: 'numeric',
     hour: '2-digit', minute: '2-digit', second: '2-digit',
   });
+}
+
+// ── SSE — live updates when someone asks a question ────────────────────
+function connectSSE() {
+  if (sse) { sse.close(); sse = null; }
+  const url = `/admin/api/events?key=${encodeURIComponent(adminKey)}`;
+  sse = new EventSource(url);
+
+  sse.onopen = () => {
+    document.getElementById('live-dot').className   = 'live-dot on';
+    document.getElementById('live-label').textContent = 'live';
+    document.getElementById('live-label').style.color = 'var(--green)';
+  };
+
+  sse.addEventListener('question', () => {
+    refreshAll();
+  });
+
+  sse.onerror = () => {
+    document.getElementById('live-dot').className   = 'live-dot';
+    document.getElementById('live-label').textContent = 'offline';
+    document.getElementById('live-label').style.color = 'var(--muted)';
+    // EventSource reconnects automatically — no manual retry needed
+  };
 }
 
 // ── API ───────────────────────────────────────────────────────────────
@@ -352,7 +360,7 @@ async function refreshAll(manual = false) {
   const [stats, users, questions] = await Promise.all([
     api('stats'),
     api('users'),
-    api('questions?limit=500'),
+    api('questions?limit=1000'),
   ]);
   if (!stats) return false;
 
@@ -595,7 +603,8 @@ function shortId(id) {
   if (ok) {
     document.getElementById('login').style.display    = 'none';
     document.getElementById('dashboard').style.display = 'flex';
-    startTimers();
+    startClock();
+    connectSSE();
   } else {
     localStorage.removeItem('ora_admin');
     adminKey = '';
