@@ -508,6 +508,7 @@ const userId      = tgUser?.id      ?? 'guest';
 const tgUsername  = tgUser?.username   ?? null;
 const tgFirstName = tgUser?.first_name ?? null;
 
+let userStatus = { canAsk: true, remaining: 2, isPremium: false };
 let abVariant  = 'A';
 let lastAnswer = null;
 
