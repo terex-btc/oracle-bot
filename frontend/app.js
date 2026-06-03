@@ -134,33 +134,45 @@ function OrbCanvas(canvas, size = 280, isMain = false) {
 
     float plasma(vec3 p, float t) {
       float v = 0.0;
-      v += sin(p.x * 3.8 + t * 0.72);
-      v += sin(p.y * 4.5 - t * 0.58 + p.x * 2.1);
-      v += sin((p.x + p.z) * 3.2 + t * 0.65);
-      v += sin(length(p.xy) * 5.5 - t * 0.90);
-      v += sin(p.z * 4.0 + t * 0.44 + p.y * 1.7);
-      v += sin((p.x - p.y + p.z * 0.6) * 4.2 - t * 0.36);
-      return v / 6.0 * 0.5 + 0.5;
+      v += sin(p.x * 4.2 + t * 0.82);
+      v += sin(p.y * 5.2 - t * 0.64 + p.x * 2.4);
+      v += sin((p.x + p.z) * 3.6 + t * 0.74);
+      v += sin(length(p.xy) * 6.5 - t * 1.05);
+      v += sin(p.z * 4.8 + t * 0.50 + p.y * 2.0);
+      v += sin((p.x - p.y + p.z * 0.7) * 5.0 - t * 0.40);
+      v += sin(length(p) * 4.5 + t * 0.35);
+      v += sin((p.y + p.z) * 4.0 + t * 0.60 - p.x);
+      return v / 8.0 * 0.5 + 0.5;
     }
 
     void main() {
-      float v  = plasma(vPos * 1.7, uTime);
+      float v  = plasma(vPos * 1.9, uTime);
       float h1 = uHue;
-      float h2 = fract(uHue + 0.08);
-      float h3 = fract(uHue + 0.17);
+      float h2 = fract(uHue + 0.09);
+      float h3 = fract(uHue + 0.19);
 
-      vec3 col = mix(hsl2rgb(h1, 1.0, 0.44), hsl2rgb(h2, 1.0, 0.60), v);
-      col = mix(col, hsl2rgb(h3, 1.0, 0.80), pow(v, 2.6) * 0.60);
+      vec3 col = mix(hsl2rgb(h1, 1.0, 0.28), hsl2rgb(h2, 1.0, 0.68), v);
+      col = mix(col, hsl2rgb(h3, 1.0, 0.92), pow(v, 2.1) * 0.80);
+      col = mix(col, vec3(1.0), pow(v, 4.0) * 0.28);
 
-      // Core glow — brighter toward center
-      float core = max(0.0, 1.0 - length(vPos) * 1.1);
-      col += hsl2rgb(fract(h1 + 0.04), 0.85, 0.88) * core * core * 0.55;
+      // Core glow — bright energy center
+      float core = max(0.0, 1.0 - length(vPos) * 1.04);
+      col += hsl2rgb(fract(h1 + 0.04), 0.88, 0.97) * core * core * 0.90;
 
-      // Fresnel rim — neon edge glow
-      float fres = pow(1.0 - abs(dot(normalize(vNormal), vec3(0.0, 0.0, 1.0))), 2.0);
-      col += hsl2rgb(fract(h1 + 0.12), 1.0, 0.82) * fres * 1.0;
+      // Fresnel rim — strong neon edge
+      float fres = pow(1.0 - abs(dot(normalize(vNormal), vec3(0.0, 0.0, 1.0))), 1.6);
+      col += hsl2rgb(fract(h1 + 0.12), 1.0, 0.90) * fres * 1.8;
 
-      gl_FragColor = vec4(col, 0.92);
+      // Glass specular — white highlight
+      vec3 lDir = normalize(vec3(0.45, 0.65, 1.0));
+      float spec = pow(max(0.0, dot(reflect(-lDir, normalize(vNormal)), vec3(0.0,0.0,1.0))), 18.0);
+      col += vec3(1.0) * spec * 0.55;
+
+      // Energy veins — thin bright lines
+      float vein = pow(abs(sin(vPos.x * 13.0 + uTime * 1.2 + vPos.y * 9.0)), 10.0);
+      col += hsl2rgb(h2, 1.0, 0.98) * vein * 0.55;
+
+      gl_FragColor = vec4(col, 0.95);
     }
   `;
 
@@ -179,14 +191,14 @@ function OrbCanvas(canvas, size = 280, isMain = false) {
     new THREE.SphereGeometry(1.0, 64, 64),
     new THREE.MeshStandardMaterial({
       color: 0xddeeff, roughness: 0.0, metalness: 0.12,
-      transparent: true, opacity: 0.07,
+      transparent: true, opacity: 0.11,
     })
   );
   scene.add(glassMesh);
 
   // ── Specular highlight blobs (key glass marker) ───────────────
   const hlMat = new THREE.MeshBasicMaterial({
-    color: 0xffffff, transparent: true, opacity: 0.55,
+    color: 0xffffff, transparent: true, opacity: 0.72,
     blending: THREE.AdditiveBlending, depthWrite: false,
   });
   const hl1 = new THREE.Mesh(new THREE.SphereGeometry(0.175, 12, 12), hlMat);
@@ -202,7 +214,7 @@ function OrbCanvas(canvas, size = 280, isMain = false) {
   // ── Particle cloud (floating inside sphere) ───────────────────
   let pts = null, ptMat = null;
   if (isMain) {
-    const N   = 380;
+    const N   = 500;
     const pos = new Float32Array(N * 3);
     for (let i = 0; i < N; i++) {
       const th = Math.random() * Math.PI * 2;
@@ -229,11 +241,11 @@ function OrbCanvas(canvas, size = 280, isMain = false) {
        { sp:  0.45, ph: 4.19,        tl:  0.72 }]
     : [{ sp: 0.70,  ph: 0,           tl: 0 }];
   const lights = lightDefs.map(d => {
-    const l = new THREE.PointLight(0xff00ff, isMain ? 5 : 2.5, 5.5);
+    const l = new THREE.PointLight(0xff00ff, isMain ? 8 : 4.0, 6.0);
     scene.add(l);
     return { ...d, light: l };
   });
-  scene.add(new THREE.AmbientLight(0x110011, 0.6));
+  scene.add(new THREE.AmbientLight(0x110011, 1.0));
 
   // ── Animation ─────────────────────────────────────────────────
   let currentHue = 0.82, targetHue = 0.82, raf;
@@ -259,6 +271,11 @@ function OrbCanvas(canvas, size = 280, isMain = false) {
   }
   tick();
 
+
+  function setColor(colorName) {
+    const hueMap = { yes: 0.44, no: 0.97, maybe: 0.13, default: 0.82 };
+    targetHue = hueMap[colorName] ?? 0.82;
+  }
 
   return { setColor, stop: () => cancelAnimationFrame(raf) };
 }
