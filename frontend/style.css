@@ -303,7 +303,7 @@ body.keyboard-open .question-section {
   z-index: 3;
   border-radius: 50%;
   transition: filter 1.2s ease;
-  filter: drop-shadow(0 0 38px rgba(139,61,255,0.75)) drop-shadow(0 0 14px rgba(200,120,255,0.45));
+  filter: drop-shadow(0 0 42px rgba(120,40,220,0.80)) drop-shadow(0 0 18px rgba(160,80,255,0.50)) drop-shadow(0 0 6px rgba(80,20,160,0.60));
 }
 
 .orb-ring {
@@ -338,7 +338,7 @@ body.keyboard-open .question-section {
   position: absolute;
   width: 380px; height: 380px;
   border-radius: 50%;
-  background: radial-gradient(circle, hsla(280,100%,78%,0.55) 0%, hsla(285,100%,62%,0.26) 38%, hsla(275,100%,50%,0.12) 62%, transparent 78%);
+  background: radial-gradient(circle, hsla(272,100%,65%,0.65) 0%, hsla(275,100%,50%,0.30) 35%, hsla(270,100%,40%,0.14) 58%, transparent 76%);
   z-index: 1;
   animation: glow-pulse 2.6s ease-in-out infinite;
   transition: background 0.8s ease;

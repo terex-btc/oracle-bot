@@ -97,7 +97,7 @@ function OrbCanvas(canvas, size = 280, isMain = false) {
 
   const scene  = new THREE.Scene();
   const camera = new THREE.PerspectiveCamera(45, 1, 0.01, 100);
-  camera.position.z = 3.2;
+  camera.position.z = 2.9;
 
   // ── GLSL: Plasma shader (sine-wave based, no noise library) ──
   const VS = /* glsl */`
@@ -132,47 +132,43 @@ function OrbCanvas(canvas, size = 280, isMain = false) {
       return clamp(rgb + m, 0.0, 1.0);
     }
 
-    float plasma(vec3 p, float t) {
+    float smokeTurb(vec3 p, float t) {
+      float a = t * 0.18;
+      float ca = cos(a), sa = sin(a);
+      vec3 q = vec3(p.x*ca - p.z*sa, p.y, p.x*sa + p.z*ca);
       float v = 0.0;
-      v += sin(p.x * 4.2 + t * 0.82);
-      v += sin(p.y * 5.2 - t * 0.64 + p.x * 2.4);
-      v += sin((p.x + p.z) * 3.6 + t * 0.74);
-      v += sin(length(p.xy) * 6.5 - t * 1.05);
-      v += sin(p.z * 4.8 + t * 0.50 + p.y * 2.0);
-      v += sin((p.x - p.y + p.z * 0.7) * 5.0 - t * 0.40);
-      v += sin(length(p) * 4.5 + t * 0.35);
-      v += sin((p.y + p.z) * 4.0 + t * 0.60 - p.x);
-      return v / 8.0 * 0.5 + 0.5;
+      v += sin(q.x*3.0 + t*0.45) * sin(q.y*3.5 - t*0.32) * sin(q.z*2.8 + t*0.25);
+      v += sin(q.x*5.8 + q.z*3.8 + t*0.60) * 0.42;
+      v += sin(q.y*5.0 + q.x*3.0 - t*0.44) * 0.36;
+      v += sin(length(q.xz)*5.5 - t*0.68 + q.y*2.2) * 0.32;
+      v += sin((q.x+q.y+q.z)*4.2 + t*0.36) * 0.26;
+      v += sin(q.x*q.y*3.0 + t*0.28 + q.z*2.5) * 0.20;
+      return v;
     }
 
     void main() {
-      float v  = plasma(vPos * 1.9, uTime);
-      float h1 = uHue;
-      float h2 = fract(uHue + 0.09);
-      float h3 = fract(uHue + 0.19);
+      float raw = smokeTurb(vPos * 1.55, uTime);
+      float v = clamp(raw * 0.44 + 0.50, 0.0, 1.0);
 
-      vec3 col = mix(hsl2rgb(h1, 1.0, 0.28), hsl2rgb(h2, 1.0, 0.68), v);
-      col = mix(col, hsl2rgb(h3, 1.0, 0.92), pow(v, 2.1) * 0.80);
-      col = mix(col, vec3(1.0), pow(v, 4.0) * 0.28);
+      vec3 deep   = hsl2rgb(uHue, 0.98, 0.03);
+      vec3 mid    = hsl2rgb(uHue, 1.00, 0.22);
+      vec3 smoke1 = hsl2rgb(uHue, 0.98, 0.50);
+      vec3 smoke2 = hsl2rgb(uHue, 0.82, 0.74);
+      vec3 wisp   = hsl2rgb(uHue, 0.55, 0.95);
 
-      // Core glow — bright energy center
-      float core = max(0.0, 1.0 - length(vPos) * 1.04);
-      col += hsl2rgb(fract(h1 + 0.04), 0.88, 0.97) * core * core * 0.90;
+      vec3 col = deep;
+      col = mix(col, mid,    smoothstep(0.12, 0.32, v));
+      col = mix(col, smoke1, smoothstep(0.30, 0.56, v));
+      col = mix(col, smoke2, smoothstep(0.54, 0.74, v));
+      col = mix(col, wisp,   smoothstep(0.72, 0.90, v));
 
-      // Fresnel rim — strong neon edge
-      float fres = pow(1.0 - abs(dot(normalize(vNormal), vec3(0.0, 0.0, 1.0))), 1.6);
-      col += hsl2rgb(fract(h1 + 0.12), 1.0, 0.90) * fres * 1.8;
+      float wb = pow(max(0.0, v - 0.70) / 0.30, 2.2);
+      col += hsl2rgb(uHue, 0.40, 0.97) * wb * 1.60;
 
-      // Glass specular — white highlight
-      vec3 lDir = normalize(vec3(0.45, 0.65, 1.0));
-      float spec = pow(max(0.0, dot(reflect(-lDir, normalize(vNormal)), vec3(0.0,0.0,1.0))), 18.0);
-      col += vec3(1.0) * spec * 0.55;
+      float nDot = abs(dot(normalize(vNormal), vec3(0.0, 0.0, 1.0)));
+      col *= 0.50 + nDot * 0.50;
 
-      // Energy veins — thin bright lines
-      float vein = pow(abs(sin(vPos.x * 13.0 + uTime * 1.2 + vPos.y * 9.0)), 10.0);
-      col += hsl2rgb(h2, 1.0, 0.98) * vein * 0.55;
-
-      gl_FragColor = vec4(col, 0.95);
+      gl_FragColor = vec4(col, 0.97);
     }
   `;
 
@@ -187,28 +183,55 @@ function OrbCanvas(canvas, size = 280, isMain = false) {
   scene.add(plasmaInner);
 
   // ── Glass shell (barely-visible surface with sheen) ───────────
+  const glassVS = `
+    varying vec3 vN; varying vec3 vV;
+    void main() {
+      vN = normalize(normalMatrix * normal);
+      vec4 mv = modelViewMatrix * vec4(position, 1.0);
+      vV = normalize(-mv.xyz);
+      gl_Position = projectionMatrix * mv;
+    }`;
+  const glassFS = `
+    varying vec3 vN; varying vec3 vV;
+    void main() {
+      float nv = abs(dot(vN, vV));
+      float fres = pow(1.0 - nv, 3.0);
+      float alpha = 0.04 + fres * 0.32;
+      gl_FragColor = vec4(0.90, 0.88, 1.00, alpha);
+    }`;
   const glassMesh = new THREE.Mesh(
     new THREE.SphereGeometry(1.0, 64, 64),
-    new THREE.MeshStandardMaterial({
-      color: 0xddeeff, roughness: 0.0, metalness: 0.12,
-      transparent: true, opacity: 0.11,
+    new THREE.ShaderMaterial({
+      vertexShader: glassVS, fragmentShader: glassFS,
+      transparent: true, side: THREE.FrontSide, depthWrite: false,
     })
   );
   scene.add(glassMesh);
 
   // ── Specular highlight blobs (key glass marker) ───────────────
-  const hlMat = new THREE.MeshBasicMaterial({
-    color: 0xffffff, transparent: true, opacity: 0.72,
+  // Large primary glass reflection (like window light on crystal ball)
+  const hlBigMat = new THREE.MeshBasicMaterial({
+    color: 0xffffff, transparent: true, opacity: 0.92,
     blending: THREE.AdditiveBlending, depthWrite: false,
   });
-  const hl1 = new THREE.Mesh(new THREE.SphereGeometry(0.175, 12, 12), hlMat);
-  hl1.position.set(-0.37, 0.43, 0.88);
+  const hl0 = new THREE.Mesh(new THREE.SphereGeometry(0.24, 14, 14), hlBigMat);
+  hl0.scale.set(1.55, 0.88, 1.0);
+  hl0.position.set(-0.37, 0.46, 0.88);
+  scene.add(hl0);
+
+  const hlMat = new THREE.MeshBasicMaterial({
+    color: 0xffffff, transparent: true, opacity: 0.52,
+    blending: THREE.AdditiveBlending, depthWrite: false,
+  });
+  const hl1 = new THREE.Mesh(new THREE.SphereGeometry(0.10, 10, 10), hlMat);
+  hl1.position.set(-0.52, 0.28, 0.87);
   scene.add(hl1);
+
   const hl2 = new THREE.Mesh(
-    new THREE.SphereGeometry(0.07, 8, 8),
-    new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.28, blending: THREE.AdditiveBlending, depthWrite: false })
+    new THREE.SphereGeometry(0.05, 8, 8),
+    new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.22, blending: THREE.AdditiveBlending, depthWrite: false })
   );
-  hl2.position.set(0.30, -0.33, 0.90);
+  hl2.position.set(0.32, -0.35, 0.90);
   scene.add(hl2);
 
   // ── Particle cloud (floating inside sphere) ───────────────────
