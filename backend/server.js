@@ -429,7 +429,7 @@ if (BOT_TOKEN) {
       try {
         await bot.sendMessage(u.userId,
           `🔮 *Питання дня від Оракула:*\n\n_"${q}"_\n\nНатисни — і дізнайся відповідь долі\\.`,
-          { parse_mode: 'MarkdownV2', reply_markup: { inline_keyboard: [[{ text: '🔮 Отримати відповідь', web_app: { url: WEBAPP_URL } }]] } }
+          { parse_mode: 'MarkdownV2', reply_markup: { inline_keyboard: [[{ text: '🔮 Отримати відповідь', web_app: { url: `${WEBAPP_URL}?q=${encodeURIComponent(q)}` } }]] } }
         );
       } catch {}
       await new Promise(r => setTimeout(r, 80));

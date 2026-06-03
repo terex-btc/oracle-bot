@@ -895,6 +895,14 @@ document.getElementById('btn-history-back')?.addEventListener('click', () => {
 // Завантажуємо статус при старті
 fetchStatus();
 
+// ─── Auto-ask from daily question deep link (?q=...) ───────────
+const _autoQ = new URLSearchParams(window.location.search).get('q');
+if (_autoQ) {
+  input.value = _autoQ;
+  charCount.textContent = String(_autoQ.length);
+  setTimeout(askOracle, 1400);
+}
+
 // ─── Show Answer ────────────────────────────────────────────────
 function showAnswer(question, answer) {
   lastAnswer = answer;
