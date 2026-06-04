@@ -82,61 +82,143 @@ function createStars(container, count = 80) {
 }
 document.querySelectorAll('.stars-bg').forEach(c => createStars(c));
 
-// ─── Hand Color Control ─────────────────────────────────────────
-function setHandColor(colorName) {
-  const map = {
-    yes:     { border: 'rgba(0,245,160,0.85)',  aura: 'rgba(0,245,160,0.55)',  eye: '#00f5a0' },
-    no:      { border: 'rgba(255,77,109,0.85)', aura: 'rgba(255,77,109,0.55)', eye: '#ff4d6d' },
-    maybe:   { border: 'rgba(245,200,66,0.85)', aura: 'rgba(245,200,66,0.55)', eye: '#f5c842' },
-    default: { border: 'rgba(160,80,255,0.88)', aura: 'rgba(139,61,255,0.45)', eye: '#f5c842' },
-  };
-  const c = map[colorName] || map.default;
+// ─── Canvas 2D Crystal Ball ────────────────────────────────────
+function OrbCanvas(canvas, size, isMain) {
+  const dpr = Math.min(window.devicePixelRatio || 1, 2);
+  canvas.width  = size * dpr;
+  canvas.height = size * dpr;
+  canvas.style.width  = size + 'px';
+  canvas.style.height = size + 'px';
+  const ctx = canvas.getContext('2d');
+  const R = (size * dpr) / 2;
 
-  const handBorder = document.getElementById('hand-border');
-  const handAura   = document.getElementById('hand-aura');
-  const eyeStop    = document.getElementById('eyeStop1');
-  const mainIris   = document.getElementById('main-iris');
-  const aeyeStop   = document.getElementById('aeye-stop');
-  const aeyeIris   = document.getElementById('aeye-iris');
-  const aeyeBorder = document.getElementById('aeye-border');
-  const aeyeOutl   = document.getElementById('aeye-outline');
-  const handSvg    = document.getElementById('oracle-hand');
-  const answerEye  = document.getElementById('answer-eye');
+  let hue = 278, targetHue = 278, raf;
 
-  if (handBorder) handBorder.setAttribute('stroke', c.border);
-  if (eyeStop)    eyeStop.setAttribute('stop-color', c.eye);
-  if (mainIris)   mainIris.setAttribute('fill', c.eye);
-  if (handAura)   handAura.style.background =
-    `radial-gradient(circle, ${c.aura} 0%, transparent 70%)`;
-  if (handSvg)    handSvg.style.filter =
-    `drop-shadow(0 0 22px ${c.aura}) drop-shadow(0 0 8px ${c.border})`;
+  // Wisps config — fewer for small orb
+  const wispCount = isMain ? 7 : 4;
+  const wisps = Array.from({ length: wispCount }, (_, i) => ({
+    speed:  0.18 + i * 0.06,
+    speed2: 0.11 + i * 0.04,
+    phase:  i * (Math.PI * 2 / wispCount),
+    phase2: i * (Math.PI * 1.3 / wispCount),
+    size:   0.32 + (i % 3) * 0.10,
+    hOff:   i * 14 - 20,
+  }));
 
-  if (aeyeStop)   aeyeStop.setAttribute('stop-color', c.eye);
-  if (aeyeIris)   aeyeIris.setAttribute('fill', c.eye);
-  if (aeyeBorder) aeyeBorder.setAttribute('stroke', c.border);
-  if (aeyeOutl)   aeyeOutl.setAttribute('stroke', c.eye);
-  if (answerEye)  answerEye.style.filter =
-    `drop-shadow(0 0 14px ${c.aura})`;
-}
+  function drawFrame(t) {
+    ctx.clearRect(0, 0, R * 2, R * 2);
 
-// ─── Cosmic stars inside hand ───────────────────────────────────
-function buildHandStars() {
-  const g = document.getElementById('hand-stars-svg');
-  if (!g) return;
-  for (let i = 0; i < 55; i++) {
-    const ns = 'http://www.w3.org/2000/svg';
-    const c = document.createElementNS(ns, 'circle');
-    const r = Math.random() * 1.5 + 0.3;
-    c.setAttribute('cx', 40 + Math.random() * 120);
-    c.setAttribute('cy', 70 + Math.random() * 185);
-    c.setAttribute('r', String(r));
-    c.setAttribute('fill', 'white');
-    c.setAttribute('opacity', String(Math.random() * 0.5 + 0.1));
-    c.style.animation = `twinkle ${(Math.random()*4+2).toFixed(1)}s ease-in-out ${(Math.random()*4).toFixed(1)}s infinite`;
-    g.appendChild(c);
+    /* ── Clip to sphere ── */
+    ctx.save();
+    ctx.beginPath();
+    ctx.arc(R, R, R * 0.915, 0, Math.PI * 2);
+    ctx.clip();
+
+    /* Base gradient — deep purple core */
+    const base = ctx.createRadialGradient(R * 0.62, R * 0.38, 0, R, R, R);
+    base.addColorStop(0.00, `hsl(${hue + 22}, 90%, 62%)`);
+    base.addColorStop(0.28, `hsl(${hue + 5},  100%, 38%)`);
+    base.addColorStop(0.58, `hsl(${hue - 10}, 100%, 18%)`);
+    base.addColorStop(0.82, `hsl(${hue - 20}, 100%, 8%)`);
+    base.addColorStop(1.00, `hsl(${hue - 30}, 100%, 2%)`);
+    ctx.fillStyle = base;
+    ctx.fillRect(0, 0, R * 2, R * 2);
+
+    /* Smoke wisps */
+    wisps.forEach((w, i) => {
+      const ax = t * w.speed  + w.phase;
+      const ay = t * w.speed2 + w.phase2;
+      const cx = R + Math.cos(ax) * R * 0.42;
+      const cy = R + Math.sin(ay) * R * 0.35;
+      const r  = R * (w.size + Math.sin(t * 0.38 + i) * 0.08);
+
+      const g = ctx.createRadialGradient(cx, cy, 0, cx, cy, r);
+      const lum = 58 + (i % 3) * 7;
+      const alpha1 = isMain ? 0.42 : 0.38;
+      const alpha2 = isMain ? 0.18 : 0.14;
+      g.addColorStop(0,   `hsla(${hue + w.hOff + 15}, 95%, ${lum}%, ${alpha1})`);
+      g.addColorStop(0.5, `hsla(${hue + w.hOff},      90%, ${lum - 12}%, ${alpha2})`);
+      g.addColorStop(1,   'transparent');
+      ctx.fillStyle = g;
+      ctx.fillRect(0, 0, R * 2, R * 2);
+    });
+
+    /* Inner nebula center glow */
+    const center = ctx.createRadialGradient(R, R, 0, R, R, R * 0.52);
+    center.addColorStop(0, `hsla(${hue + 18}, 85%, 78%, 0.20)`);
+    center.addColorStop(1, 'transparent');
+    ctx.fillStyle = center;
+    ctx.fillRect(0, 0, R * 2, R * 2);
+
+    /* Fresnel rim darkening */
+    const rim = ctx.createRadialGradient(R, R, R * 0.60, R, R, R * 0.915);
+    rim.addColorStop(0,   'transparent');
+    rim.addColorStop(0.7, `hsla(${hue - 15}, 80%, 8%, 0.10)`);
+    rim.addColorStop(1,   `hsla(${hue - 20}, 80%, 4%, 0.55)`);
+    ctx.fillStyle = rim;
+    ctx.fillRect(0, 0, R * 2, R * 2);
+
+    /* Glass sheen overlay */
+    const glass = ctx.createRadialGradient(R * 1.12, R * 0.82, R * 0.62, R, R, R * 0.93);
+    glass.addColorStop(0,   'transparent');
+    glass.addColorStop(0.75, `hsla(${hue + 35}, 65%, 88%, 0.05)`);
+    glass.addColorStop(1,    `hsla(${hue + 45}, 55%, 95%, 0.20)`);
+    ctx.fillStyle = glass;
+    ctx.fillRect(0, 0, R * 2, R * 2);
+
+    /* Primary specular highlight (large, soft) */
+    const hl1 = ctx.createRadialGradient(R * 0.50, R * 0.35, 0, R * 0.50, R * 0.35, R * 0.30);
+    hl1.addColorStop(0,   'rgba(255,255,255,0.68)');
+    hl1.addColorStop(0.45, 'rgba(255,255,255,0.22)');
+    hl1.addColorStop(1,   'transparent');
+    ctx.fillStyle = hl1;
+    ctx.fillRect(0, 0, R * 2, R * 2);
+
+    /* Secondary tight highlight */
+    const hl2 = ctx.createRadialGradient(R * 0.60, R * 0.44, 0, R * 0.60, R * 0.44, R * 0.075);
+    hl2.addColorStop(0, 'rgba(255,255,255,0.90)');
+    hl2.addColorStop(1, 'transparent');
+    ctx.fillStyle = hl2;
+    ctx.fillRect(0, 0, R * 2, R * 2);
+
+    /* Subtle bottom reflection */
+    if (isMain) {
+      const ref = ctx.createRadialGradient(R * 0.7, R * 1.65, 0, R * 0.7, R * 1.65, R * 0.30);
+      ref.addColorStop(0, `hsla(${hue + 30}, 70%, 80%, 0.12)`);
+      ref.addColorStop(1, 'transparent');
+      ctx.fillStyle = ref;
+      ctx.fillRect(0, 0, R * 2, R * 2);
+    }
+
+    ctx.restore();
+
+    /* Rim stroke */
+    ctx.save();
+    ctx.beginPath();
+    ctx.arc(R, R, R * 0.915, 0, Math.PI * 2);
+    ctx.strokeStyle = `hsla(${hue + 25}, 100%, 80%, 0.38)`;
+    ctx.lineWidth = dpr * 1.2;
+    ctx.stroke();
+    ctx.restore();
   }
+
+  function tick() {
+    raf = requestAnimationFrame(tick);
+    hue += (targetHue - hue) * 0.022;
+    drawFrame(Date.now() * 0.001);
+  }
+  tick();
+
+  function setColor(colorName) {
+    const map = { yes: 150, no: 350, maybe: 44, default: 278 };
+    targetHue = map[colorName] ?? 278;
+  }
+
+  return { setColor, stop: () => cancelAnimationFrame(raf) };
 }
-buildHandStars();
+
+const mainOrb   = OrbCanvas(document.getElementById('orb-canvas'),        240, true);
+const answerOrb = OrbCanvas(document.getElementById('answer-orb-canvas'),  90, false);
 
 // ─── i18n ──────────────────────────────────────────────────────
 const LANGS = {
@@ -428,7 +510,7 @@ document.querySelector('.oracle-header')?.addEventListener('click', () => {
   if (document.body.classList.contains('keyboard-open')) input.blur();
 });
 
-document.querySelector('.hand-section')?.addEventListener('click', () => input.blur());
+document.querySelector('.orb-section')?.addEventListener('click', () => input.blur());
 
 // ─── Ask ────────────────────────────────────────────────────────
 async function askOracle() {
@@ -672,7 +754,23 @@ function showAnswer(question, answer) {
   const wrap = document.getElementById('answer-verdict-wrap');
   wrap.className = `answer-verdict-wrap verdict-${answer.color}`;
 
-  setHandColor(answer.color);
+  mainOrb.setColor(answer.color);
+  answerOrb.setColor(answer.color);
+
+  const glowColors = { yes: '#00f5a0', no: '#ff4d6d', maybe: '#f5c842' };
+  const orbGlow = document.getElementById('orb-glow');
+  if (orbGlow) {
+    const c = glowColors[answer.color] || '#8b3dff';
+    orbGlow.style.background = `radial-gradient(circle, ${c}50 0%, transparent 70%)`;
+  }
+
+  const glowMap = {
+    yes:   'drop-shadow(0 0 40px rgba(0,245,160,0.75))   drop-shadow(0 0 80px rgba(0,245,160,0.35))',
+    no:    'drop-shadow(0 0 40px rgba(255,77,109,0.75))  drop-shadow(0 0 80px rgba(255,77,109,0.35))',
+    maybe: 'drop-shadow(0 0 40px rgba(245,200,66,0.75))  drop-shadow(0 0 80px rgba(245,200,66,0.35))',
+  };
+  const orbCanvas = document.getElementById('orb-canvas');
+  if (orbCanvas) orbCanvas.style.filter = glowMap[answer.color] || '';
 
   showScreen('screen-answer');
 
@@ -700,7 +798,14 @@ document.getElementById('btn-again').addEventListener('click', async () => {
   miniOrb.classList.remove('visible');
   card.classList.remove('visible');
 
-  setHandColor('default');
+  mainOrb.setColor('default');
+  answerOrb.setColor('default');
+
+  const orbCanvas = document.getElementById('orb-canvas');
+  if (orbCanvas) orbCanvas.style.filter = '';
+
+  const orbGlow = document.getElementById('orb-glow');
+  if (orbGlow) orbGlow.style.background = '';
 
   input.value = '';
   charCount.textContent = '0';
