@@ -207,19 +207,25 @@ function OrbCanvas(canvas, size, isMain) {
     ctx.restore();
   }
 
+  let paused = false;
+
   function tick() {
+    if (paused) { raf = null; return; }
     raf = requestAnimationFrame(tick);
     hue += (targetHue - hue) * 0.026;
     drawFrame(Date.now() * 0.001);
   }
   tick();
 
+  function pause()  { paused = true;  }
+  function resume() { if (!paused) return; paused = false; tick(); }
+
   function setColor(colorName) {
     const map = { yes: 152, no: 352, maybe: 44, default: 278 };
     targetHue = map[colorName] ?? 278;
   }
 
-  return { setColor, stop: () => cancelAnimationFrame(raf) };
+  return { setColor, pause, resume, stop: () => { paused = true; cancelAnimationFrame(raf); } };
 }
 
 const mainOrb   = OrbCanvas(document.getElementById('orb-canvas'),        240, true);
@@ -432,13 +438,15 @@ async function fetchStatus() {
     updateCounter();
     applyABVariant();
   } catch {}
-  if (tgUsername || tgFirstName) {
-    fetch('/api/user/sync', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ userId, username: tgUsername, firstName: tgFirstName }),
-    }).catch(() => {});
-  }
+}
+
+// Sync username/name once on startup — not on every fetchStatus call
+if (userId !== 'guest' && (tgUsername || tgFirstName)) {
+  fetch('/api/user/sync', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ userId, username: tgUsername, firstName: tgFirstName }),
+  }).catch(() => {});
 }
 
 function applyABVariant() {
@@ -471,7 +479,21 @@ function updateCounter() {
 function showScreen(id) {
   document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
   document.getElementById(id).classList.add('active');
+  // Pause orbs on screens where they are not visible
+  if (id === 'screen-home')   { mainOrb.resume(); answerOrb.pause(); }
+  else if (id === 'screen-answer') { mainOrb.pause(); answerOrb.resume(); }
+  else                              { mainOrb.pause(); answerOrb.pause(); }
 }
+
+// Pause all animations when app is backgrounded
+document.addEventListener('visibilitychange', () => {
+  if (document.hidden) { mainOrb.pause(); answerOrb.pause(); }
+  else {
+    const active = document.querySelector('.screen.active')?.id;
+    if (active === 'screen-home')   mainOrb.resume();
+    else if (active === 'screen-answer') answerOrb.resume();
+  }
+});
 
 // ─── Loading ────────────────────────────────────────────────────
 const overlay = document.getElementById('loading-overlay');
@@ -583,7 +605,7 @@ input.addEventListener('keydown', e => {
 });
 
 // ─── Poll status after payment (handles race with bot webhook) ───
-async function pollUntilPremium(timeoutMs = 9000) {
+async function pollStatus(check, timeoutMs = 9000) {
   const deadline = Date.now() + timeoutMs;
   while (Date.now() < deadline) {
     await new Promise(r => setTimeout(r, 900));
@@ -593,27 +615,14 @@ async function pollUntilPremium(timeoutMs = 9000) {
       userStatus = data;
       abVariant = data.variant || 'A';
       updateCounter();
-      if (data.isPremium) return true;
+      if (check(data)) return true;
     } catch {}
   }
   return false;
 }
 
-async function pollUntilBonus(prevBonus, timeoutMs = 9000) {
-  const deadline = Date.now() + timeoutMs;
-  while (Date.now() < deadline) {
-    await new Promise(r => setTimeout(r, 900));
-    try {
-      const r = await fetch(`/api/user/${userId}/status`);
-      const data = await r.json();
-      userStatus = data;
-      abVariant = data.variant || 'A';
-      updateCounter();
-      if ((data.remaining ?? 0) > prevBonus || (data.bonusLeft ?? 0) > (userStatus.bonusLeft ?? 0)) return true;
-    } catch {}
-  }
-  return false;
-}
+const pollUntilPremium = () => pollStatus(d => d.isPremium);
+const pollUntilBonus   = (prev) => pollStatus(d => (d.remaining ?? 0) > prev || (d.bonusLeft ?? 0) > prev);
 
 // ─── Premium purchase flow ────────────────────────────────────────
 async function buyPremiumFlow(btn, plan = 'month') {

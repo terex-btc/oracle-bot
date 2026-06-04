@@ -1,9 +1,10 @@
 require('dotenv').config({ path: __dirname + '/.env' });
-const express    = require('express');
-const cors       = require('cors');
-const path       = require('path');
-const https      = require('https');
-const TelegramBot = require('node-telegram-bot-api');
+const express      = require('express');
+const cors         = require('cors');
+const compression  = require('compression');
+const path         = require('path');
+const https        = require('https');
+const TelegramBot  = require('node-telegram-bot-api');
 const { getOracleAnswer } = require('./config/oracleAnswers');
 let getStatus, increment, activatePremium, addBonus, applyReferral, logQuestion,
     getUserQuestions, getStats, getUsers, getQuestions,
@@ -40,9 +41,24 @@ const ADMIN_SECRET = process.env.ADMIN_SECRET || (BOT_TOKEN ? BOT_TOKEN.slice(0,
 const sseClients  = new Set();
 
 // ─── Middleware ───────────────────────────────────────────────────────────────
-app.use(cors());
-app.use(express.json());
-// Статика ПІСЛЯ всіх API маршрутів (Express 5 — порядок важливий)
+app.use(compression());
+app.use(cors({ origin: ['https://web.telegram.org', 'https://t.me', WEBAPP_URL] }));
+app.use(express.json({ limit: '16kb' }));
+
+// ─── In-memory rate limit for /api/ask ───────────────────────────────────────
+const askLastTs = new Map();
+function rateLimit(req, res, next) {
+  const uid = req.body?.userId || req.ip;
+  const now = Date.now();
+  const last = askLastTs.get(uid) || 0;
+  if (now - last < 1500) return res.status(429).json({ error: 'Too fast' });
+  askLastTs.set(uid, now);
+  if (askLastTs.size > 5000) {
+    const cutoff = now - 60_000;
+    for (const [k, v] of askLastTs) if (v < cutoff) askLastTs.delete(k);
+  }
+  next();
+}
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 function emitQuestion() {
@@ -606,7 +622,7 @@ api.get('/user/:userId/history', async (req, res) => {
   }
 });
 
-api.post('/ask', (req, res) => {
+api.post('/ask', rateLimit, (req, res) => {
   const { question, userId, category, username, firstName } = req.body;
   if (userId && userId !== 'guest' && (username || firstName)) {
     setUserInfo(userId, { username, firstName });
@@ -755,8 +771,21 @@ adminApi.get('/events', (req, res) => {
 app.use('/admin/api', adminApi);
 
 // ─── Static + SPA fallback (після /api та /admin) ────────────────────────────
-app.use(express.static(path.join(__dirname, '../frontend')));
+// HTML — no cache (завжди свіжий)
+// JS/CSS/images — 1 year cache (вміст міняється тільки при деплої)
+app.use(express.static(path.join(__dirname, '../frontend'), {
+  etag:     true,
+  lastModified: true,
+  setHeaders(res, filePath) {
+    if (/\.(js|css|png|jpg|jpeg|webp|svg|ico|woff2?)$/.test(filePath)) {
+      res.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
+    } else {
+      res.setHeader('Cache-Control', 'no-cache');
+    }
+  },
+}));
 app.get('/{*path}', (req, res) => {
+  res.setHeader('Cache-Control', 'no-cache');
   res.sendFile(path.join(__dirname, '../frontend/index.html'));
 });
 
