@@ -329,17 +329,31 @@ if (BOT_TOKEN) {
 
   // ── Оплата Stars ────────────────────────────────────────────────
   bot.on('pre_checkout_query', async (query) => {
+    const payload = query?.invoice_payload || '';
+    // Validate payload belongs to our bot
+    if (!payload.startsWith('oracle_')) {
+      return bot.answerPreCheckoutQuery(query.id, false, 'Невідомий платіж');
+    }
+    // Validate currency
+    if (query.currency !== 'XTR') {
+      return bot.answerPreCheckoutQuery(query.id, false, 'Невірна валюта');
+    }
     await bot.answerPreCheckoutQuery(query.id, true);
+    console.log(`[PreCheckout] OK userId=${query.from?.id} payload=${payload} stars=${query.total_amount}`);
   });
 
   bot.on('message', async (msg) => {
     if (!msg.successful_payment) return;
     const userId  = msg.from?.id;
-    if (userId) setUserInfo(userId, { username: msg.from?.username, firstName: msg.from?.first_name });
+    const stars   = msg.successful_payment.total_amount;
     const payload = msg.successful_payment.invoice_payload;
-    if (!payload.startsWith('oracle_')) return;
 
-    // Подарунки: oracle_gift7_UID / oracle_gift30_UID
+    console.log(`[Payment] userId=${userId} stars=${stars} payload=${payload}`);
+
+    if (userId) setUserInfo(userId, { username: msg.from?.username, firstName: msg.from?.first_name });
+    if (!payload?.startsWith('oracle_')) return;
+
+    // ── Подарунки: oracle_gift7_UID / oracle_gift30_UID ──
     if (payload.startsWith('oracle_gift')) {
       const giftPlanKey = Object.keys(GIFT_PLANS).find(k => payload.startsWith(`oracle_${k}_`));
       const gp = giftPlanKey ? GIFT_PLANS[giftPlanKey] : { days: 30 };
@@ -354,37 +368,47 @@ if (BOT_TOKEN) {
           ]]}
         }
       );
-      console.log(`[Gift] userId=${userId} code=${code} days=${gp.days}`);
+      console.log(`[Gift] userId=${userId} code=${code} days=${gp.days} stars=${stars}`);
       return;
     }
 
-    // Пакети питань: oracle_pack5_UID / oracle_pack20_UID
+    // ── Пакети питань: oracle_pack5_UID / oracle_pack20_UID ──
     if (payload.startsWith('oracle_pack')) {
       const packKey = Object.keys(PACK_CONFIG).find(k => payload.startsWith(`oracle_${k}_`));
       const pack = packKey ? PACK_CONFIG[packKey] : null;
+      // Verify stars match expected amount (allow ±1 tolerance for Telegram rounding)
+      if (pack && Math.abs(stars - pack.stars) > 1) {
+        console.warn(`[Pack] stars mismatch: expected=${pack.stars} got=${stars} userId=${userId}`);
+      }
       const amount = pack ? pack.questions : 5;
       const newTotal = addBonus(userId, amount);
       await bot.sendMessage(msg.chat.id,
         `🎁 *Пакет питань отримано!*\n\n🔮 *+${amount} питань* додано до твого балансу\n💫 Всього бонусних питань: *${newTotal}*\n\n_Задавай питання — доля чекає!_`,
         { parse_mode: 'Markdown', reply_markup: { inline_keyboard: [[{ text: '🔮 Відкрити Оракул', web_app: { url: WEBAPP_URL } }]] } }
       );
-      console.log(`[Pack] userId=${userId} pack=${packKey} amount=${amount} total=${newTotal}`);
+      console.log(`[Pack] userId=${userId} pack=${packKey} amount=${amount} total=${newTotal} stars=${stars}`);
       return;
     }
 
-    // Визначаємо план з payload: oracle_week_UID / oracle_month_UID / oracle_lifetime_UID
+    // ── Преміум плани: oracle_week_UID / oracle_month_UID / oracle_lifetime_UID ──
     let days = 30;
     if (payload.startsWith('oracle_week_'))     days = 7;
     if (payload.startsWith('oracle_lifetime_')) days = 36500;
+
+    // Verify stars amount matches expected plan price
+    const expectedPlan = Object.values(PLAN_CONFIG).find(p => p.days === days);
+    if (expectedPlan && Math.abs(stars - expectedPlan.stars) > 1) {
+      console.warn(`[Premium] stars mismatch: expected=${expectedPlan.stars} got=${stars} userId=${userId}`);
+    }
 
     const until = activatePremium(userId, days);
     const date  = new Date(until).toLocaleDateString('uk', { day: 'numeric', month: 'long', year: 'numeric' });
     const planLabel = days === 7 ? '7 днів' : days === 36500 ? 'Назавжди ♾️' : '30 днів';
     await bot.sendMessage(msg.chat.id,
-      `✨ *Ласкаво просимо до Премиум!*\n\n⭐ Оракул відповідає без обмежень\n📅 План: *${planLabel}*\n📅 Активний до: *${date}*\n\n🔮 Задавай питання — доля чекає!`,
+      `✨ *Ласкаво просимо до Преміум!*\n\n⭐ Оракул відповідає без обмежень\n📅 План: *${planLabel}*\n📅 Активний до: *${date}*\n\n🔮 Задавай питання — доля чекає!`,
       { parse_mode: 'Markdown', reply_markup: { inline_keyboard: [[{ text: '🔮 Відкрити Оракул', web_app: { url: WEBAPP_URL } }]] } }
     );
-    console.log(`[Premium] userId=${userId} plan=${planLabel} until=${until}`);
+    console.log(`[Premium] userId=${userId} plan=${planLabel} until=${until} stars=${stars}`);
   });
 
   console.log('[Bot] Oracle Bot запущено (webhook mode)');
@@ -500,7 +524,7 @@ const api = express.Router();
 
 api.get('/ping', (req, res) => res.json({ pong: true }));
 
-api.get('/status', (req, res) => res.json({ ok: true, version: '2.3.0', bot: !!bot }));
+api.get('/status', (req, res) => res.json({ ok: true, version: '2.4.0', bot: !!bot }));
 
 api.get('/user/:userId/status', (req, res) => {
   try {

@@ -582,9 +582,43 @@ input.addEventListener('keydown', e => {
   if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); askOracle(); }
 });
 
+// ─── Poll status after payment (handles race with bot webhook) ───
+async function pollUntilPremium(timeoutMs = 9000) {
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    await new Promise(r => setTimeout(r, 900));
+    try {
+      const r = await fetch(`/api/user/${userId}/status`);
+      const data = await r.json();
+      userStatus = data;
+      abVariant = data.variant || 'A';
+      updateCounter();
+      if (data.isPremium) return true;
+    } catch {}
+  }
+  return false;
+}
+
+async function pollUntilBonus(prevBonus, timeoutMs = 9000) {
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    await new Promise(r => setTimeout(r, 900));
+    try {
+      const r = await fetch(`/api/user/${userId}/status`);
+      const data = await r.json();
+      userStatus = data;
+      abVariant = data.variant || 'A';
+      updateCounter();
+      if ((data.remaining ?? 0) > prevBonus || (data.bonusLeft ?? 0) > (userStatus.bonusLeft ?? 0)) return true;
+    } catch {}
+  }
+  return false;
+}
+
 // ─── Premium purchase flow ────────────────────────────────────────
 async function buyPremiumFlow(btn, plan = 'month') {
   if (!btn || btn.disabled) return;
+  if (userId === 'guest') { showPaywall(); return; }
   btn.disabled = true;
   const orig = btn.textContent;
   btn.textContent = '⏳...';
@@ -596,30 +630,41 @@ async function buyPremiumFlow(btn, plan = 'month') {
       body: JSON.stringify({ plan }),
     });
     const data = await r.json();
-    if (!data.url) throw new Error(data.error || 'Ошибка');
+    if (!r.ok || !data.url) throw new Error(data.error || 'Не вдалось створити рахунок');
     if (tg?.openInvoice) {
       tg.openInvoice(data.url, async (status) => {
         if (status === 'paid') {
           trackEvent('payment_success');
-          await fetchStatus();
+          btn.textContent = '⏳ Активація...';
+          const ok = await pollUntilPremium();
           showScreen('screen-home');
-          orbStatus.textContent = LANGS[currentLang].orbPremium;
+          orbStatus.textContent = ok ? LANGS[currentLang].orbPremium : '⭐ Преміум активується...';
+          setTimeout(() => { orbStatus.textContent = LANGS[currentLang].orbDefault; }, 4000);
+          if (tg?.HapticFeedback) tg.HapticFeedback.notificationOccurred('success');
+        } else if (status === 'cancelled') {
+          // user closed payment — silent, just re-enable button
+        } else if (status === 'failed') {
+          orbStatus.textContent = '❌ Оплата не пройшла';
           setTimeout(() => { orbStatus.textContent = LANGS[currentLang].orbDefault; }, 3000);
         }
+        btn.disabled = false;
+        btn.textContent = orig;
       });
     } else {
       window.open(data.url, '_blank');
+      btn.disabled = false;
+      btn.textContent = orig;
     }
   } catch (e) {
-    alert('Ошибка: ' + e.message);
-  } finally {
+    orbStatus.textContent = '❌ ' + e.message;
+    setTimeout(() => { orbStatus.textContent = LANGS[currentLang].orbDefault; }, 3000);
     btn.disabled = false;
     btn.textContent = orig;
   }
 }
 
 document.getElementById('premium-btn')?.addEventListener('click', function() {
-  buyPremiumFlow(this, 'month');
+  showPaywall();
 });
 
 document.querySelectorAll('.plan-btn').forEach(btn => {
@@ -647,10 +692,12 @@ document.getElementById('btn-ref')?.addEventListener('click', () => {
 // ─── Pack purchase flow ───────────────────────────────────────────
 async function buyPackFlow(btn, pack) {
   if (!btn || btn.disabled) return;
+  if (userId === 'guest') { showPaywall(); return; }
   btn.disabled = true;
   const orig = btn.textContent;
   btn.textContent = '⏳...';
   trackEvent('pack_click');
+  let invoiceQuestions = 0;
   try {
     const r = await fetch(`/api/user/${userId}/invoice`, {
       method: 'POST',
@@ -658,22 +705,34 @@ async function buyPackFlow(btn, pack) {
       body: JSON.stringify({ plan: pack }),
     });
     const data = await r.json();
-    if (!data.url) throw new Error(data.error || 'Помилка');
+    if (!r.ok || !data.url) throw new Error(data.error || 'Не вдалось створити рахунок');
+    invoiceQuestions = data.questions || 0;
     if (tg?.openInvoice) {
       tg.openInvoice(data.url, async (status) => {
         if (status === 'paid') {
-          await fetchStatus();
+          trackEvent('pack_paid');
+          btn.textContent = '⏳ Нарахування...';
+          const prevRemaining = userStatus.remaining ?? 0;
+          await pollUntilBonus(prevRemaining);
           showScreen('screen-home');
-          orbStatus.textContent = `🎁 +${data.questions} питань додано!`;
+          orbStatus.textContent = `🎁 +${invoiceQuestions} питань додано!`;
+          setTimeout(() => { orbStatus.textContent = LANGS[currentLang].orbDefault; }, 4000);
+          if (tg?.HapticFeedback) tg.HapticFeedback.notificationOccurred('success');
+        } else if (status === 'failed') {
+          orbStatus.textContent = '❌ Оплата не пройшла';
           setTimeout(() => { orbStatus.textContent = LANGS[currentLang].orbDefault; }, 3000);
         }
+        btn.disabled = false;
+        btn.textContent = orig;
       });
     } else {
       window.open(data.url, '_blank');
+      btn.disabled = false;
+      btn.textContent = orig;
     }
   } catch (e) {
-    alert('Помилка: ' + e.message);
-  } finally {
+    orbStatus.textContent = '❌ ' + e.message;
+    setTimeout(() => { orbStatus.textContent = LANGS[currentLang].orbDefault; }, 3000);
     btn.disabled = false;
     btn.textContent = orig;
   }
