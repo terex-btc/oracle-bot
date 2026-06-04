@@ -1,5 +1,4 @@
 /* ─── Oracle Bot — Cosmic Edition ───────────────────────────── */
-import * as THREE from 'three';
 
 const tg = window.Telegram?.WebApp;
 
@@ -7,7 +6,6 @@ function applyTopInset() {
   const deviceTop  = tg?.safeAreaInset?.top        ?? 0;
   const contentTop = tg?.contentSafeAreaInset?.top ?? 0;
   const sum = deviceTop + contentTop;
-  // В fullscreen сума може бути 0 до першого події — ставимо мінімум 62px
   const top = tg?.isFullscreen ? Math.max(sum, 62) : Math.max(sum, 0);
   document.documentElement.style.setProperty('--tg-safe-top', top + 'px');
 }
@@ -31,7 +29,6 @@ if (tg) {
   applyTopInset();
 }
 
-// Fallback: якщо Telegram не дав інсет — беремо з CSS env()
 document.addEventListener('DOMContentLoaded', () => {
   const current = getComputedStyle(document.documentElement).getPropertyValue('--tg-safe-top').trim();
   const currentVal = parseInt(current) || 0;
@@ -68,8 +65,6 @@ function createStars(container, count = 80) {
     ].join(';');
     container.appendChild(s);
   }
-
-  // 4 shooting stars
   for (let i = 0; i < 4; i++) {
     const ss = document.createElement('div');
     ss.className = 'shooting-star';
@@ -87,251 +82,61 @@ function createStars(container, count = 80) {
 }
 document.querySelectorAll('.stars-bg').forEach(c => createStars(c));
 
-// ─── 3D Plasma Orb (Three.js + GLSL) ───────────────────────────
-function OrbCanvas(canvas, size = 280, isMain = false) {
-  // ── WebGL Renderer ───────────────────────────────────────────
-  const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: true });
-  renderer.setSize(size, size);
-  renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
-  renderer.setClearColor(0x000000, 0);
+// ─── Hand Color Control ─────────────────────────────────────────
+function setHandColor(colorName) {
+  const map = {
+    yes:     { border: 'rgba(0,245,160,0.85)',  aura: 'rgba(0,245,160,0.55)',  eye: '#00f5a0' },
+    no:      { border: 'rgba(255,77,109,0.85)', aura: 'rgba(255,77,109,0.55)', eye: '#ff4d6d' },
+    maybe:   { border: 'rgba(245,200,66,0.85)', aura: 'rgba(245,200,66,0.55)', eye: '#f5c842' },
+    default: { border: 'rgba(160,80,255,0.88)', aura: 'rgba(139,61,255,0.45)', eye: '#f5c842' },
+  };
+  const c = map[colorName] || map.default;
 
-  const scene  = new THREE.Scene();
-  const camera = new THREE.PerspectiveCamera(45, 1, 0.01, 100);
-  camera.position.z = 2.9;
+  const handBorder = document.getElementById('hand-border');
+  const handAura   = document.getElementById('hand-aura');
+  const eyeStop    = document.getElementById('eyeStop1');
+  const mainIris   = document.getElementById('main-iris');
+  const aeyeStop   = document.getElementById('aeye-stop');
+  const aeyeIris   = document.getElementById('aeye-iris');
+  const aeyeBorder = document.getElementById('aeye-border');
+  const aeyeOutl   = document.getElementById('aeye-outline');
+  const handSvg    = document.getElementById('oracle-hand');
+  const answerEye  = document.getElementById('answer-eye');
 
-  // ── GLSL: Plasma shader (sine-wave based, no noise library) ──
-  const VS = /* glsl */`
-    varying vec3 vPos;
-    varying vec3 vNormal;
-    void main() {
-      vPos    = position;
-      vNormal = normalize(normalMatrix * normal);
-      gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
-    }
-  `;
+  if (handBorder) handBorder.setAttribute('stroke', c.border);
+  if (eyeStop)    eyeStop.setAttribute('stop-color', c.eye);
+  if (mainIris)   mainIris.setAttribute('fill', c.eye);
+  if (handAura)   handAura.style.background =
+    `radial-gradient(circle, ${c.aura} 0%, transparent 70%)`;
+  if (handSvg)    handSvg.style.filter =
+    `drop-shadow(0 0 22px ${c.aura}) drop-shadow(0 0 8px ${c.border})`;
 
-  const FS = /* glsl */`
-    precision highp float;
-    uniform float uTime;
-    uniform float uHue;
-    varying vec3 vPos;
-    varying vec3 vNormal;
-
-    vec3 hsl2rgb(float h, float s, float l) {
-      float c  = (1.0 - abs(2.0*l - 1.0)) * s;
-      float h6 = h * 6.0;
-      float x  = c * (1.0 - abs(mod(h6, 2.0) - 1.0));
-      float m  = l - c * 0.5;
-      vec3 rgb;
-      if      (h6 < 1.0) rgb = vec3(c, x, 0.0);
-      else if (h6 < 2.0) rgb = vec3(x, c, 0.0);
-      else if (h6 < 3.0) rgb = vec3(0.0, c, x);
-      else if (h6 < 4.0) rgb = vec3(0.0, x, c);
-      else if (h6 < 5.0) rgb = vec3(x, 0.0, c);
-      else               rgb = vec3(c, 0.0, x);
-      return clamp(rgb + m, 0.0, 1.0);
-    }
-
-    float smokeTurb(vec3 p, float t) {
-      float a = t * 0.18;
-      float ca = cos(a), sa = sin(a);
-      vec3 q = vec3(p.x*ca - p.z*sa, p.y, p.x*sa + p.z*ca);
-      float v = 0.0;
-      v += sin(q.x*3.0 + t*0.45) * sin(q.y*3.5 - t*0.32) * sin(q.z*2.8 + t*0.25);
-      v += sin(q.x*5.8 + q.z*3.8 + t*0.60) * 0.42;
-      v += sin(q.y*5.0 + q.x*3.0 - t*0.44) * 0.36;
-      v += sin(length(q.xz)*5.5 - t*0.68 + q.y*2.2) * 0.32;
-      v += sin((q.x+q.y+q.z)*4.2 + t*0.36) * 0.26;
-      v += sin(q.x*q.y*3.0 + t*0.28 + q.z*2.5) * 0.20;
-      return v;
-    }
-
-    void main() {
-      float raw = smokeTurb(vPos * 1.55, uTime);
-      float v = clamp(raw * 0.44 + 0.50, 0.0, 1.0);
-
-      vec3 deep   = hsl2rgb(uHue, 0.98, 0.03);
-      vec3 mid    = hsl2rgb(uHue, 1.00, 0.22);
-      vec3 smoke1 = hsl2rgb(uHue, 0.98, 0.50);
-      vec3 smoke2 = hsl2rgb(uHue, 0.82, 0.74);
-      vec3 wisp   = hsl2rgb(uHue, 0.55, 0.95);
-
-      vec3 col = deep;
-      col = mix(col, mid,    smoothstep(0.12, 0.32, v));
-      col = mix(col, smoke1, smoothstep(0.30, 0.56, v));
-      col = mix(col, smoke2, smoothstep(0.54, 0.74, v));
-      col = mix(col, wisp,   smoothstep(0.72, 0.90, v));
-
-      float wb = pow(max(0.0, v - 0.70) / 0.30, 2.2);
-      col += hsl2rgb(uHue, 0.40, 0.97) * wb * 1.60;
-
-      float nDot = abs(dot(normalize(vNormal), vec3(0.0, 0.0, 1.0)));
-      col *= 0.50 + nDot * 0.50;
-
-      gl_FragColor = vec4(col, 0.97);
-    }
-  `;
-
-  const plasmaUniforms = { uTime: { value: 0.0 }, uHue: { value: 0.82 } };
-  const plasmaInner = new THREE.Mesh(
-    new THREE.SphereGeometry(0.97, isMain ? 64 : 32, isMain ? 64 : 32),
-    new THREE.ShaderMaterial({
-      uniforms: plasmaUniforms, vertexShader: VS, fragmentShader: FS,
-      side: THREE.BackSide, transparent: true,
-    })
-  );
-  scene.add(plasmaInner);
-
-  // ── Glass shell (barely-visible surface with sheen) ───────────
-  const glassVS = `
-    varying vec3 vN; varying vec3 vV;
-    void main() {
-      vN = normalize(normalMatrix * normal);
-      vec4 mv = modelViewMatrix * vec4(position, 1.0);
-      vV = normalize(-mv.xyz);
-      gl_Position = projectionMatrix * mv;
-    }`;
-  const glassFS = `
-    varying vec3 vN; varying vec3 vV;
-    void main() {
-      float nv = abs(dot(vN, vV));
-      float fres = pow(1.0 - nv, 3.0);
-      float alpha = 0.04 + fres * 0.32;
-      gl_FragColor = vec4(0.90, 0.88, 1.00, alpha);
-    }`;
-  const glassMesh = new THREE.Mesh(
-    new THREE.SphereGeometry(1.0, 64, 64),
-    new THREE.ShaderMaterial({
-      vertexShader: glassVS, fragmentShader: glassFS,
-      transparent: true, side: THREE.FrontSide, depthWrite: false,
-    })
-  );
-  scene.add(glassMesh);
-
-  // ── Specular highlight blobs (key glass marker) ───────────────
-  // Large primary glass reflection (like window light on crystal ball)
-  const hlBigMat = new THREE.MeshBasicMaterial({
-    color: 0xffffff, transparent: true, opacity: 0.92,
-    blending: THREE.AdditiveBlending, depthWrite: false,
-  });
-  const hl0 = new THREE.Mesh(new THREE.SphereGeometry(0.24, 14, 14), hlBigMat);
-  hl0.scale.set(1.55, 0.88, 1.0);
-  hl0.position.set(-0.37, 0.46, 0.88);
-  scene.add(hl0);
-
-  const hlMat = new THREE.MeshBasicMaterial({
-    color: 0xffffff, transparent: true, opacity: 0.52,
-    blending: THREE.AdditiveBlending, depthWrite: false,
-  });
-  const hl1 = new THREE.Mesh(new THREE.SphereGeometry(0.10, 10, 10), hlMat);
-  hl1.position.set(-0.52, 0.28, 0.87);
-  scene.add(hl1);
-
-  const hl2 = new THREE.Mesh(
-    new THREE.SphereGeometry(0.05, 8, 8),
-    new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.22, blending: THREE.AdditiveBlending, depthWrite: false })
-  );
-  hl2.position.set(0.32, -0.35, 0.90);
-  scene.add(hl2);
-
-  // ── Particle cloud (floating inside sphere) ───────────────────
-  let pts = null, ptMat = null;
-  if (isMain) {
-    const N   = 500;
-    const pos = new Float32Array(N * 3);
-    for (let i = 0; i < N; i++) {
-      const th = Math.random() * Math.PI * 2;
-      const ph = Math.acos(2 * Math.random() - 1);
-      const rr = Math.cbrt(Math.random()) * 0.88;
-      pos[i*3]   = rr * Math.sin(ph) * Math.cos(th);
-      pos[i*3+1] = rr * Math.sin(ph) * Math.sin(th);
-      pos[i*3+2] = rr * Math.cos(ph);
-    }
-    const ptGeo = new THREE.BufferGeometry();
-    ptGeo.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
-    ptMat = new THREE.PointsMaterial({
-      color: 0xffffff, size: 0.022, transparent: true, opacity: 0.70,
-      blending: THREE.AdditiveBlending, depthWrite: false,
-    });
-    pts = new THREE.Points(ptGeo, ptMat);
-    scene.add(pts);
-  }
-
-  // ── Orbiting point lights inside sphere ───────────────────────
-  const lightDefs = isMain
-    ? [{ sp:  0.82, ph: 0,           tl: 0.40 },
-       { sp: -0.58, ph: 2.09,        tl: -0.38 },
-       { sp:  0.45, ph: 4.19,        tl:  0.72 }]
-    : [{ sp: 0.70,  ph: 0,           tl: 0 }];
-  const lights = lightDefs.map(d => {
-    const l = new THREE.PointLight(0xff00ff, isMain ? 8 : 4.0, 6.0);
-    scene.add(l);
-    return { ...d, light: l };
-  });
-  scene.add(new THREE.AmbientLight(0x110011, 1.0));
-
-  // ── Animation ─────────────────────────────────────────────────
-  let currentHue = 0.82, targetHue = 0.82, raf;
-
-  function tick() {
-    raf = requestAnimationFrame(tick);
-    const t = Date.now() * 0.001;
-
-    currentHue += (targetHue - currentHue) * 0.018;
-    plasmaUniforms.uTime.value = t;
-    plasmaUniforms.uHue.value  = currentHue;
-
-    lights.forEach((l, i) => {
-      const ang = t * l.sp + l.ph;
-      l.light.color.setHSL(currentHue + i * 0.06, 1.0, 0.68);
-      l.light.position.set(Math.cos(ang) * 0.72, Math.sin(ang * 1.35 + l.tl) * 0.50, Math.sin(ang) * 0.72);
-    });
-    if (pts)   { pts.rotation.y = t * 0.10; pts.rotation.x = Math.sin(t * 0.08) * 0.14; }
-    if (ptMat) { ptMat.color.setHSL(currentHue + 0.03, 0.75, 0.92); }
-
-    glassMesh.rotation.y = Math.sin(t * 0.12) * 0.04;
-    renderer.render(scene, camera);
-  }
-  tick();
-
-
-  function setColor(colorName) {
-    const hueMap = { yes: 0.44, no: 0.97, maybe: 0.13, default: 0.82 };
-    targetHue = hueMap[colorName] ?? 0.82;
-  }
-
-  return { setColor, stop: () => cancelAnimationFrame(raf) };
+  if (aeyeStop)   aeyeStop.setAttribute('stop-color', c.eye);
+  if (aeyeIris)   aeyeIris.setAttribute('fill', c.eye);
+  if (aeyeBorder) aeyeBorder.setAttribute('stroke', c.border);
+  if (aeyeOutl)   aeyeOutl.setAttribute('stroke', c.eye);
+  if (answerEye)  answerEye.style.filter =
+    `drop-shadow(0 0 14px ${c.aura})`;
 }
 
-const mainOrb   = OrbCanvas(document.getElementById('orb-canvas'), 280, true);
-const answerOrb = OrbCanvas(document.getElementById('answer-orb-canvas'), 120, false);
-
-// ─── Orbital Particles ──────────────────────────────────────────
-function buildOrbParticles() {
-  const wrap = document.querySelector('.orb-wrapper');
-  const p = document.createElement('div');
-  p.className = 'orb-particles';
-  const positions = [
-    { top: '0%',   left: '50%',  delay: '0s',    color: 'rgba(245,200,70,0.9)' },
-    { top: '50%',  left: '100%', delay: '-2.7s', color: 'rgba(255,230,100,0.8)' },
-    { top: '100%', left: '50%',  delay: '-5.3s', color: 'rgba(220,165,40,0.8)' },
-    { top: '50%',  left: '0%',   delay: '-8s',   color: 'rgba(255,215,60,0.7)' },
-  ];
-  positions.forEach(pos => {
-    const dot = document.createElement('div');
-    dot.className = 'orb-particle';
-    dot.style.cssText = `
-      top: ${pos.top}; left: ${pos.left};
-      margin-top: -1.5px; margin-left: -1.5px;
-      background: ${pos.color};
-      box-shadow: 0 0 8px ${pos.color};
-      animation-delay: ${pos.delay};
-    `;
-    p.appendChild(dot);
-  });
-  wrap.appendChild(p);
+// ─── Cosmic stars inside hand ───────────────────────────────────
+function buildHandStars() {
+  const g = document.getElementById('hand-stars-svg');
+  if (!g) return;
+  for (let i = 0; i < 55; i++) {
+    const ns = 'http://www.w3.org/2000/svg';
+    const c = document.createElementNS(ns, 'circle');
+    const r = Math.random() * 1.5 + 0.3;
+    c.setAttribute('cx', 40 + Math.random() * 120);
+    c.setAttribute('cy', 70 + Math.random() * 185);
+    c.setAttribute('r', String(r));
+    c.setAttribute('fill', 'white');
+    c.setAttribute('opacity', String(Math.random() * 0.5 + 0.1));
+    c.style.animation = `twinkle ${(Math.random()*4+2).toFixed(1)}s ease-in-out ${(Math.random()*4).toFixed(1)}s infinite`;
+    g.appendChild(c);
+  }
 }
-buildOrbParticles();
+buildHandStars();
 
 // ─── i18n ──────────────────────────────────────────────────────
 const LANGS = {
@@ -356,12 +161,6 @@ const LANGS = {
     loadingText:      'Оракул читает судьбу...',
     paywallTitle:     'Оракул молчит...',
     paywallSub:       'Ты исчерпал лимит на сегодня',
-    catAll:           'Все',
-    catLove:          '💕 Любовь',
-    catCareer:        '💼 Карьера',
-    catMoney:         '💰 Деньги',
-    catHealth:        '🌿 Здоровье',
-    catPlaceholders:  { 'Любовь': '💕 Вопрос о любви...', 'Карьера': '💼 Вопрос о карьере...', 'Деньги': '💰 Вопрос о деньгах...', 'Здоровье': '🌿 Вопрос о здоровье...' },
     shareText:        (q, v) => `🔮 Оракул Судьбы ответил!\n\n❓ ${q}\n\n${v}\n\n✨ Спроси и ты: @oracle_666bot`,
     shareCopied:      '✅ Скопировано!',
     refMsg:           link => `🔮 Попробуй Оракул Судьбы! Задай вопрос судьбе.\n${link}`,
@@ -410,12 +209,6 @@ const LANGS = {
     loadingText:      'Оракул читає долю...',
     paywallTitle:     'Оракул мовчить...',
     paywallSub:       'Ти вичерпав ліміт на сьогодні',
-    catAll:           'Всі',
-    catLove:          '💕 Кохання',
-    catCareer:        "💼 Кар'єра",
-    catMoney:         '💰 Гроші',
-    catHealth:        "🌿 Здоров'я",
-    catPlaceholders:  { 'Любовь': '💕 Питання про кохання...', 'Карьера': "💼 Питання про кар'єру...", 'Деньги': '💰 Питання про гроші...', 'Здоровье': "🌿 Питання про здоров'я..." },
     shareText:        (q, v) => `🔮 Оракул Долі відповів!\n\n❓ ${q}\n\n${v}\n\n✨ Запитай і ти: @oracle_666bot`,
     shareCopied:      '✅ Скопійовано!',
     refMsg:           link => `🔮 Спробуй Оракул Долі! Задай питання долі.\n${link}`,
@@ -461,7 +254,7 @@ function applyLang() {
   }
 
   const qi = document.getElementById('question-input');
-  if (qi) qi.placeholder = selectedCategory ? (L.catPlaceholders[selectedCategory] || L.placeholder) : L.placeholder;
+  if (qi) qi.placeholder = L.placeholder;
 
   const at = document.querySelector('.ask-text');
   if (at) at.textContent = L.askBtn;
@@ -486,11 +279,6 @@ function applyLang() {
   if (pt) pt.textContent = L.paywallTitle;
   const ps = document.querySelector('.paywall-sub');
   if (ps) ps.textContent = L.paywallSub;
-
-  const chipTexts = [L.catAll, L.catLove, L.catCareer, L.catMoney, L.catHealth];
-  document.querySelectorAll('.cat-chip').forEach((chip, i) => {
-    if (chipTexts[i] !== undefined) chip.textContent = chipTexts[i];
-  });
 
   [['week', L.planWeek, L.planDescWeek], ['month', L.planMonth, L.planDescMonth], ['lifetime', L.planLifetime, L.planDescLifetime]].forEach(([id, name, desc]) => {
     const nameEl = document.querySelector(`#plan-${id} .plan-name`);
@@ -528,20 +316,6 @@ function toggleLang() {
   applyLang();
 }
 
-// ─── Category chips ────────────────────────────────────────────
-let selectedCategory = '';
-document.querySelectorAll('.cat-chip').forEach(chip => {
-  chip.addEventListener('click', () => {
-    document.querySelectorAll('.cat-chip').forEach(c => c.classList.remove('active'));
-    chip.classList.add('active');
-    selectedCategory = chip.dataset.cat || '';
-    const L = LANGS[currentLang];
-    document.getElementById('question-input').placeholder = selectedCategory
-      ? (L.catPlaceholders[selectedCategory] || L.placeholder)
-      : L.placeholder;
-  });
-});
-
 // ─── User State ────────────────────────────────────────────────
 const tgUser      = tg?.initDataUnsafe?.user;
 const userId      = tgUser?.id      ?? 'guest';
@@ -552,7 +326,6 @@ let userStatus = { canAsk: true, remaining: 2, isPremium: false };
 let abVariant  = 'A';
 let lastAnswer = null;
 
-// Fire-and-forget funnel event
 function trackEvent(event) {
   if (userId === 'guest') return;
   fetch('/api/event', {
@@ -622,12 +395,10 @@ const input     = document.getElementById('question-input');
 const charCount = document.getElementById('char-count');
 const askBtn    = document.getElementById('ask-btn');
 const orbStatus = document.getElementById('orb-status');
-const orbWrap   = document.getElementById('orb-wrapper');
 
 input.addEventListener('input', () => { charCount.textContent = input.value.length; });
 
 // ─── Keyboard detection ─────────────────────────────────────────
-// Ховаємо кулю коли клавіатура відкрита, щоб кнопка була видна
 const FULL_HEIGHT = window.visualViewport?.height || window.innerHeight;
 
 function onViewportResize() {
@@ -641,7 +412,6 @@ if (window.visualViewport) {
   window.addEventListener('resize', onViewportResize);
 }
 
-// Fallback через focus/blur (для старих Telegram клієнтів)
 input.addEventListener('focus', () => document.body.classList.add('keyboard-open'));
 input.addEventListener('blur',  () => {
   setTimeout(() => {
@@ -649,19 +419,16 @@ input.addEventListener('blur',  () => {
   }, 150);
 });
 
-// Кнопка ↓ закриває клавіатуру
 document.getElementById('kbd-dismiss')?.addEventListener('mousedown', e => {
-  e.preventDefault(); // не даємо інпуту отримати blur до кліку
+  e.preventDefault();
   input.blur();
 });
 
-// Тап на хедер закриває клавіатуру
 document.querySelector('.oracle-header')?.addEventListener('click', () => {
   if (document.body.classList.contains('keyboard-open')) input.blur();
 });
 
-// Тап на орб-зону (навіть коли вона collapsed) закриває клавіатуру
-document.querySelector('.orb-section')?.addEventListener('click', () => input.blur());
+document.querySelector('.hand-section')?.addEventListener('click', () => input.blur());
 
 // ─── Ask ────────────────────────────────────────────────────────
 async function askOracle() {
@@ -674,22 +441,18 @@ async function askOracle() {
   }
 
   askBtn.disabled = true;
-  orbWrap.classList.add('asking');
   showLoading(true);
 
-  // Запускаємо API паралельно з анімацією
   const apiPromise = fetch('/api/ask', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
       question, userId,
-      category:  selectedCategory || undefined,
       username:  tgUsername  || undefined,
       firstName: tgFirstName || undefined,
     })
   });
 
-  // Драматична анімація "оракул думає"
   const phrases = LANGS[currentLang].thinking;
   for (let i = 0; i < phrases.length; i++) {
     orbStatus.textContent = phrases[i];
@@ -708,7 +471,6 @@ async function askOracle() {
     setTimeout(() => { orbStatus.textContent = LANGS[currentLang].orbDefault; }, 3000);
   } finally {
     askBtn.disabled = false;
-    orbWrap.classList.remove('asking');
     showLoading(false);
   }
 }
@@ -724,7 +486,6 @@ function showPaywall() {
 document.getElementById('btn-come-back').addEventListener('click', () => {
   showScreen('screen-home');
 });
-
 
 askBtn.addEventListener('click', askOracle);
 input.addEventListener('keydown', e => {
@@ -767,19 +528,16 @@ async function buyPremiumFlow(btn, plan = 'month') {
   }
 }
 
-// Header premium button
 document.getElementById('premium-btn')?.addEventListener('click', function() {
   buyPremiumFlow(this, 'month');
 });
 
-// Paywall plan buttons
 document.querySelectorAll('.plan-btn').forEach(btn => {
   btn.addEventListener('click', function() {
     buyPremiumFlow(this, this.dataset.plan || 'month');
   });
 });
 
-// Referral button
 document.getElementById('btn-ref')?.addEventListener('click', () => {
   const refLink = `https://t.me/oracle_666bot?start=ref_${userId}`;
   const L = LANGS[currentLang];
@@ -892,7 +650,6 @@ document.getElementById('btn-history-back')?.addEventListener('click', () => {
   showScreen('screen-home');
 });
 
-// Завантажуємо статус при старті
 fetchStatus();
 
 // ─── Auto-ask from daily question deep link (?q=...) ───────────
@@ -915,23 +672,7 @@ function showAnswer(question, answer) {
   const wrap = document.getElementById('answer-verdict-wrap');
   wrap.className = `answer-verdict-wrap verdict-${answer.color}`;
 
-  mainOrb.setColor(answer.color);
-  answerOrb.setColor(answer.color);
-
-  const glowColors = { yes: '#00f5a0', no: '#ff4d6d', maybe: '#f5c842' };
-  const orbGlow = document.getElementById('orb-glow');
-  if (orbGlow) {
-    const c = glowColors[answer.color] || '#8b3dff';
-    orbGlow.style.background = `radial-gradient(circle, ${c}40 0%, transparent 70%)`;
-  }
-
-  const canvas = document.getElementById('orb-canvas');
-  const glowMap = {
-    yes:   'drop-shadow(0 0 35px rgba(0,245,160,0.7))',
-    no:    'drop-shadow(0 0 35px rgba(255,77,109,0.7))',
-    maybe: 'drop-shadow(0 0 35px rgba(245,200,66,0.7))',
-  };
-  canvas.style.filter = glowMap[answer.color] || 'drop-shadow(0 0 30px rgba(139,61,255,0.6))';
+  setHandColor(answer.color);
 
   showScreen('screen-answer');
 
@@ -949,7 +690,6 @@ function showAnswer(question, answer) {
 
 // ─── Again ─────────────────────────────────────────────────────
 document.getElementById('btn-again').addEventListener('click', async () => {
-  // Якщо ліміт вичерпано — одразу paywall
   if (!userStatus.isPremium && userStatus.remaining === 0) {
     showPaywall();
     return;
@@ -960,21 +700,13 @@ document.getElementById('btn-again').addEventListener('click', async () => {
   miniOrb.classList.remove('visible');
   card.classList.remove('visible');
 
-  mainOrb.setColor('default');
-  answerOrb.setColor('default');
-
-  const canvas = document.getElementById('orb-canvas');
-  canvas.style.filter = 'drop-shadow(0 0 30px rgba(139,61,255,0.6))';
+  setHandColor('default');
 
   input.value = '';
   charCount.textContent = '0';
   orbStatus.textContent = LANGS[currentLang].orbDefault;
 
-  const orbGlow = document.getElementById('orb-glow');
-  if (orbGlow) orbGlow.style.background = '';
-
   showScreen('screen-home');
-  setTimeout(() => input.focus(), 500);
 });
 
 // ─── Language switch ────────────────────────────────────────────
@@ -1003,14 +735,12 @@ function buildShareCanvas(question, answer) {
   canvas.width = W; canvas.height = H;
   const ctx = canvas.getContext('2d');
 
-  // Background
   const bg = ctx.createLinearGradient(0, 0, W, H);
   bg.addColorStop(0, '#03020f');
   bg.addColorStop(1, '#130625');
   ctx.fillStyle = bg;
   ctx.fillRect(0, 0, W, H);
 
-  // Glow blob
   const glowCol = answer.color === 'yes' ? '#00f5a0' : answer.color === 'no' ? '#ff4d6d' : '#f5c842';
   const glow = ctx.createRadialGradient(W / 2, H * 0.42, 0, W / 2, H * 0.42, 220);
   glow.addColorStop(0, glowCol + '44');
@@ -1018,35 +748,29 @@ function buildShareCanvas(question, answer) {
   ctx.fillStyle = glow;
   ctx.fillRect(0, 0, W, H);
 
-  // Top badge
   ctx.font = 'bold 15px Inter, sans-serif';
   ctx.fillStyle = 'rgba(139,61,255,0.8)';
   ctx.textAlign = 'center';
   ctx.fillText('🔮  ОРАКУЛ ДОЛІ', W / 2, 52);
 
-  // Divider
   ctx.strokeStyle = 'rgba(139,61,255,0.3)';
   ctx.lineWidth = 1;
   ctx.beginPath(); ctx.moveTo(60, 68); ctx.lineTo(W - 60, 68); ctx.stroke();
 
-  // Question label
   ctx.font = '13px Inter, sans-serif';
   ctx.fillStyle = 'rgba(255,255,255,0.35)';
   ctx.fillText('питання', W / 2, 96);
 
-  // Question text
   ctx.font = '600 17px Inter, sans-serif';
   ctx.fillStyle = 'rgba(255,255,255,0.82)';
   wrapCanvasText(ctx, `"${question}"`, W / 2, 126, W - 80, 26);
 
-  // Verdict glow
   const vGlow = ctx.createRadialGradient(W / 2, H * 0.52, 0, W / 2, H * 0.52, 130);
   vGlow.addColorStop(0, glowCol + '55');
   vGlow.addColorStop(1, 'transparent');
   ctx.fillStyle = vGlow;
   ctx.fillRect(0, H * 0.38, W, H * 0.28);
 
-  // Verdict
   const verdictText = (currentLang === 'ua' ? (answer.verdict_ua || answer.verdict) : answer.verdict) || '';
   ctx.font = 'bold 44px Cinzel, Inter, sans-serif';
   ctx.fillStyle = glowCol;
@@ -1055,17 +779,14 @@ function buildShareCanvas(question, answer) {
   ctx.fillText(verdictText, W / 2, H * 0.50);
   ctx.shadowBlur = 0;
 
-  // Message
   const msgText = (currentLang === 'ua' ? (answer.message_ua || answer.message) : answer.message) || '';
   ctx.font = '15px Inter, sans-serif';
   ctx.fillStyle = 'rgba(255,255,255,0.55)';
   wrapCanvasText(ctx, msgText, W / 2, H * 0.62, W - 80, 24);
 
-  // Bottom divider
   ctx.strokeStyle = 'rgba(139,61,255,0.25)';
   ctx.beginPath(); ctx.moveTo(60, H - 72); ctx.lineTo(W - 60, H - 72); ctx.stroke();
 
-  // Bot link
   ctx.font = 'bold 14px Inter, sans-serif';
   ctx.fillStyle = 'rgba(139,61,255,0.7)';
   ctx.fillText('@oracle_666bot', W / 2, H - 44);
@@ -1091,7 +812,6 @@ async function shareWithImage(question, answer) {
     }
   } catch {}
 
-  // Fallback — text share
   if (tg?.switchInlineQuery) {
     tg.switchInlineQuery(text);
   } else if (navigator.share) {

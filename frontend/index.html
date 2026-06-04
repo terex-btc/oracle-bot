@@ -8,13 +8,6 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link rel="stylesheet" href="style.css" />
   <script src="https://telegram.org/js/telegram-web-app.js"></script>
-  <script type="importmap">
-  {
-    "imports": {
-      "three": "https://cdn.jsdelivr.net/npm/three@0.163.0/build/three.module.js"
-    }
-  }
-  </script>
 </head>
 <body>
   <div id="app">
@@ -36,27 +29,84 @@
         <div class="question-counter" id="question-counter"></div>
       </header>
 
-      <div class="orb-section">
-        <div class="orb-wrapper" id="orb-wrapper">
-          <canvas id="orb-canvas" width="280" height="280"></canvas>
-          <div class="orb-ring ring-1"></div>
-          <div class="orb-ring ring-2"></div>
-          <div class="orb-ring ring-3"></div>
-          <div class="orb-glow" id="orb-glow"></div>
+      <div class="hand-section" id="hand-section">
+        <div class="hand-aura" id="hand-aura"></div>
+        <div class="hand-wrap" id="hand-wrap">
+          <svg class="oracle-hand" id="oracle-hand" viewBox="0 0 200 270" xmlns="http://www.w3.org/2000/svg">
+            <defs>
+              <radialGradient id="handBg" cx="50%" cy="58%" r="55%">
+                <stop offset="0%" stop-color="#3d0d78"/>
+                <stop offset="55%" stop-color="#180338"/>
+                <stop offset="100%" stop-color="#05010d"/>
+              </radialGradient>
+              <radialGradient id="eyeGrad" cx="50%" cy="50%" r="50%">
+                <stop id="eyeStop1" offset="0%" stop-color="#f5c842"/>
+                <stop id="eyeStop2" offset="100%" stop-color="#f5c842" stop-opacity="0"/>
+              </radialGradient>
+              <filter id="handGlowF" x="-25%" y="-25%" width="150%" height="150%">
+                <feGaussianBlur in="SourceGraphic" stdDeviation="4" result="b"/>
+                <feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge>
+              </filter>
+            </defs>
+            <path id="hand-fill"
+              d="M58,262 C46,262 36,250 36,238 L36,180
+                 C34,178 24,170 16,156 C10,142 14,128 26,124
+                 C38,120 48,132 48,148 L48,90
+                 C48,76 58,66 72,66 C86,66 96,76 96,88
+                 L96,76 C96,62 106,52 120,52
+                 C134,52 144,62 144,74 L144,88
+                 C144,74 154,62 168,62 C180,64 188,76 184,88
+                 L172,122 L164,155 L136,172 L136,238
+                 C134,250 122,262 108,262 Z"
+              fill="url(#handBg)"/>
+            <g id="hand-stars-svg"></g>
+            <g transform="translate(99,178)">
+              <circle r="28" fill="url(#eyeGrad)" opacity="0.40" class="eye-pulse"/>
+              <g stroke="#f5c842" stroke-width="1.1" stroke-linecap="round" class="eye-rays" opacity="0.78">
+                <line x1="0" y1="-31" x2="0" y2="-39"/>
+                <line x1="15" y1="-28" x2="19" y2="-35"/>
+                <line x1="27" y1="-18" x2="34" y2="-23"/>
+                <line x1="31" y1="0"  x2="39" y2="0"/>
+                <line x1="27" y1="18" x2="34" y2="23"/>
+                <line x1="15" y1="28" x2="19" y2="35"/>
+                <line x1="0"  y1="31" x2="0"  y2="39"/>
+                <line x1="-15" y1="28" x2="-19" y2="35"/>
+                <line x1="-27" y1="18" x2="-34" y2="23"/>
+                <line x1="-31" y1="0" x2="-39" y2="0"/>
+                <line x1="-27" y1="-18" x2="-34" y2="-23"/>
+                <line x1="-15" y1="-28" x2="-19" y2="-35"/>
+              </g>
+              <path d="M-21,0 Q0,-14 21,0 Q0,14 -21,0 Z" fill="rgba(6,1,18,0.95)" stroke="#f5c842" stroke-width="1.3"/>
+              <circle r="7.5" fill="#f5c842" class="iris-pulse" id="main-iris"/>
+              <circle r="3.8" fill="#04000e"/>
+              <circle r="1.4" cx="2.5" cy="-2.5" fill="rgba(255,255,255,0.9)"/>
+            </g>
+            <text x="60"  y="60"  text-anchor="middle" font-size="11" fill="#f5c842" opacity="0.80" font-family="serif">☽</text>
+            <text x="92"  y="45"  text-anchor="middle" font-size="11" fill="#f5c842" opacity="0.80" font-family="serif">✦</text>
+            <text x="126" y="55"  text-anchor="middle" font-size="10" fill="#f5c842" opacity="0.80" font-family="serif">∞</text>
+            <text x="160" y="76"  text-anchor="middle" font-size="9"  fill="#f5c842" opacity="0.70" font-family="serif">☥</text>
+            <text x="65"  y="148" text-anchor="middle" font-size="9"  fill="#c084fc" opacity="0.55">△</text>
+            <text x="133" y="148" text-anchor="middle" font-size="9"  fill="#c084fc" opacity="0.55">▽</text>
+            <text x="74"  y="238" text-anchor="middle" font-size="8"  fill="#c084fc" opacity="0.42">✧</text>
+            <text x="124" y="238" text-anchor="middle" font-size="8"  fill="#c084fc" opacity="0.42">⊛</text>
+            <path id="hand-border"
+              d="M58,262 C46,262 36,250 36,238 L36,180
+                 C34,178 24,170 16,156 C10,142 14,128 26,124
+                 C38,120 48,132 48,148 L48,90
+                 C48,76 58,66 72,66 C86,66 96,76 96,88
+                 L96,76 C96,62 106,52 120,52
+                 C134,52 144,62 144,74 L144,88
+                 C144,74 154,62 168,62 C180,64 188,76 184,88
+                 L172,122 L164,155 L136,172 L136,238
+                 C134,250 122,262 108,262 Z"
+              fill="none" stroke="rgba(160,80,255,0.88)" stroke-width="2"
+              filter="url(#handGlowF)"/>
+          </svg>
         </div>
         <div class="orb-status" id="orb-status">Сосредоточься на вопросе...</div>
       </div>
 
       <div class="question-section">
-        <!-- Категорії (опціонально) -->
-        <div class="categories" id="categories">
-          <button class="cat-chip" data-cat="" data-emoji="">Всі</button>
-          <button class="cat-chip" data-cat="Любовь" data-emoji="💕">💕 Любовь</button>
-          <button class="cat-chip" data-cat="Карьера" data-emoji="💼">💼 Карьера</button>
-          <button class="cat-chip" data-cat="Деньги" data-emoji="💰">💰 Деньги</button>
-          <button class="cat-chip" data-cat="Здоровье" data-emoji="🌿">🌿 Здоровье</button>
-        </div>
-
         <div class="question-box">
           <textarea
             id="question-input"
@@ -81,7 +131,21 @@
       <div class="stars-bg"></div>
 
       <div class="answer-orb-mini" id="answer-orb-mini">
-        <canvas id="answer-orb-canvas" width="120" height="120"></canvas>
+        <svg class="answer-eye" id="answer-eye" viewBox="0 0 90 90" width="90" height="90" xmlns="http://www.w3.org/2000/svg">
+          <defs>
+            <radialGradient id="aeyeGrad" cx="50%" cy="50%" r="50%">
+              <stop id="aeye-stop" offset="0%" stop-color="#f5c842"/>
+              <stop offset="100%" stop-color="#f5c842" stop-opacity="0"/>
+            </radialGradient>
+          </defs>
+          <circle r="38" cx="45" cy="45" fill="#06010f"/>
+          <circle r="38" cx="45" cy="45" fill="url(#aeyeGrad)" opacity="0.35" class="mini-pulse"/>
+          <path d="M 12,45 Q 45,28 78,45 Q 45,62 12,45 Z" fill="#04000c" stroke="#f5c842" stroke-width="1.5" id="aeye-outline"/>
+          <circle r="10" cx="45" cy="45" fill="#f5c842" id="aeye-iris"/>
+          <circle r="5" cx="45" cy="45" fill="#04000c"/>
+          <circle r="2" cx="47" cy="43" fill="rgba(255,255,255,0.85)"/>
+          <circle r="38" cx="45" cy="45" fill="none" stroke="rgba(160,80,255,0.7)" stroke-width="1.5" id="aeye-border"/>
+        </svg>
       </div>
 
       <div class="answer-card" id="answer-card">
