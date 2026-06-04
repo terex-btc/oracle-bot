@@ -118,6 +118,12 @@ async function initDb() {
 
     dbReady = true;
     console.log(`[DB] PostgreSQL ready — ${uRows.length} users, ${qRows.length} questions, ${gRows.length} gifts`);
+
+    // Keepalive: Railway proxy kills idle connections after ~5 min
+    setInterval(() => {
+      pool.query('SELECT 1').catch(() => {});
+    }, 4 * 60_000);
+
   } catch (e) {
     console.error('[DB] Init failed:', e.message);
   }
@@ -147,18 +153,25 @@ function dbSaveUser(id, u) {
 const writeQueue = [];
 let writeQueueTimer = null;
 
-function flushWriteQueue() {
+async function flushWriteQueue() {
   writeQueueTimer = null;
   if (!dbReady || !pool || !writeQueue.length) return;
   const batch = writeQueue.splice(0, 50);
   for (const q of batch) {
-    pool.query(
-      'INSERT INTO questions (user_id, question, category, color, verdict, ts) VALUES ($1,$2,$3,$4,$5,$6) ON CONFLICT DO NOTHING',
-      [q.userId, q.question, q.category || null, q.color, q.verdict, q.ts]
-    ).catch(e => {
+    try {
+      await pool.query(
+        'INSERT INTO questions (user_id, question, category, color, verdict, ts) VALUES ($1,$2,$3,$4,$5,$6) ON CONFLICT DO NOTHING',
+        [q.userId, q.question, q.category || null, q.color, q.verdict, q.ts]
+      );
+    } catch (e) {
       console.error('[DB] retryQuestion:', e.message);
-      writeQueue.push(q);
-    });
+      writeQueue.unshift(q);
+      break; // стоп при помилці, решта залишається в черзі
+    }
+  }
+  // якщо ще є — повторити через хвилину
+  if (writeQueue.length && !writeQueueTimer) {
+    writeQueueTimer = setTimeout(flushWriteQueue, 60_000);
   }
 }
 

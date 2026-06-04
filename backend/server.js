@@ -6,7 +6,7 @@ const path         = require('path');
 const https        = require('https');
 const TelegramBot  = require('node-telegram-bot-api');
 const { getOracleAnswer } = require('./config/oracleAnswers');
-let getStatus, increment, activatePremium, addBonus, applyReferral, logQuestion,
+let getStatus, increment, setUserInfo, activatePremium, addBonus, applyReferral, logQuestion,
     getUserQuestions, getStats, getUsers, getQuestions,
     createGift, redeemGift, logEvent, getFunnelStats, getABVariant;
 try {

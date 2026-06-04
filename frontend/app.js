@@ -51,6 +51,7 @@ buildCosmicBg();
 
 // ─── Stars + Shooting Stars ─────────────────────────────────────
 function createStars(container, count = 80) {
+  const frag = document.createDocumentFragment();
   for (let i = 0; i < count; i++) {
     const s = document.createElement('div');
     s.className = 'star';
@@ -63,7 +64,7 @@ function createStars(container, count = 80) {
       `--min-op:${(Math.random() * 0.1 + 0.03).toFixed(2)}`,
       `--max-op:${(Math.random() * 0.6 + 0.4).toFixed(2)}`
     ].join(';');
-    container.appendChild(s);
+    frag.appendChild(s);
   }
   for (let i = 0; i < 4; i++) {
     const ss = document.createElement('div');
@@ -77,8 +78,9 @@ function createStars(container, count = 80) {
       `--ss:${(Math.random() * 12 + 4).toFixed(1)}s`,
       `--sa:${-(Math.random() * 20 + 10)}deg`
     ].join(';');
-    container.appendChild(ss);
+    frag.appendChild(ss);
   }
+  container.appendChild(frag);
 }
 document.querySelectorAll('.stars-bg').forEach(c => createStars(c));
 
@@ -208,17 +210,22 @@ function OrbCanvas(canvas, size, isMain) {
   }
 
   let paused = false;
+  let lastFrame = 0;
 
-  function tick() {
+  function tick(now) {
     if (paused) { raf = null; return; }
     raf = requestAnimationFrame(tick);
+    // Throttle to 30fps when idle, 60fps when active
+    const fps = orbIdle ? 30 : 60;
+    if (now - lastFrame < 1000 / fps) return;
+    lastFrame = now;
     hue += (targetHue - hue) * 0.026;
-    drawFrame(Date.now() * 0.001);
+    drawFrame(now * 0.001);
   }
-  tick();
+  tick(0);
 
   function pause()  { paused = true;  }
-  function resume() { if (!paused) return; paused = false; tick(); }
+  function resume() { if (!paused) return; paused = false; tick(performance.now()); }
 
   function setColor(colorName) {
     const map = { yes: 152, no: 352, maybe: 44, default: 278 };
@@ -227,6 +234,19 @@ function OrbCanvas(canvas, size, isMain) {
 
   return { setColor, pause, resume, stop: () => { paused = true; cancelAnimationFrame(raf); } };
 }
+
+// Idle detection — 30fps after 5s of no touch/click
+let orbIdle = false;
+let orbIdleTimer = null;
+function resetOrbIdle() {
+  orbIdle = false;
+  clearTimeout(orbIdleTimer);
+  orbIdleTimer = setTimeout(() => { orbIdle = true; }, 5000);
+}
+['touchstart', 'touchmove', 'mousedown', 'mousemove'].forEach(ev =>
+  document.addEventListener(ev, resetOrbIdle, { passive: true })
+);
+resetOrbIdle();
 
 const mainOrb   = OrbCanvas(document.getElementById('orb-canvas'),        240, true);
 const answerOrb = OrbCanvas(document.getElementById('answer-orb-canvas'),  90, false);
