@@ -125,7 +125,7 @@ async function initDb() {
 
 initDb();
 
-// ─── DB Write helpers (fire-and-forget) ───────────────────────────
+// ─── DB Write helpers ──────────────────────────────────────────────
 function dbSaveUser(id, u) {
   if (!dbReady || !pool) return;
   pool.query(
@@ -143,12 +143,38 @@ function dbSaveUser(id, u) {
   ).catch(e => console.error('[DB] saveUser:', e.message));
 }
 
+// Queue for failed question writes — retried every 30s
+const writeQueue = [];
+let writeQueueTimer = null;
+
+function flushWriteQueue() {
+  writeQueueTimer = null;
+  if (!dbReady || !pool || !writeQueue.length) return;
+  const batch = writeQueue.splice(0, 50);
+  for (const q of batch) {
+    pool.query(
+      'INSERT INTO questions (user_id, question, category, color, verdict, ts) VALUES ($1,$2,$3,$4,$5,$6) ON CONFLICT DO NOTHING',
+      [q.userId, q.question, q.category || null, q.color, q.verdict, q.ts]
+    ).catch(e => {
+      console.error('[DB] retryQuestion:', e.message);
+      writeQueue.push(q);
+    });
+  }
+}
+
 function dbSaveQuestion(q) {
-  if (!dbReady || !pool) return;
+  if (!dbReady || !pool) {
+    writeQueue.push(q);
+    return;
+  }
   pool.query(
     'INSERT INTO questions (user_id, question, category, color, verdict, ts) VALUES ($1,$2,$3,$4,$5,$6)',
     [q.userId, q.question, q.category || null, q.color, q.verdict, q.ts]
-  ).catch(e => console.error('[DB] saveQuestion:', e.message));
+  ).catch(e => {
+    console.error('[DB] saveQuestion:', e.message);
+    writeQueue.push(q);
+    if (!writeQueueTimer) writeQueueTimer = setTimeout(flushWriteQueue, 30_000);
+  });
 }
 
 // ─── User helpers ──────────────────────────────────────────────────
@@ -241,16 +267,18 @@ function logQuestion(userId, question, answer, category) {
   dbSaveQuestion(q);
 }
 
-// ─── All questions for a specific user (queries DB directly) ───────
+// ─── All questions for a specific user ────────────────────────────
 async function getUserQuestions(userId) {
   const id = String(userId);
+  const memQ = questionLog.filter(q => q.userId === id);
+
   if (dbReady && pool) {
     try {
       const { rows } = await pool.query(
         'SELECT * FROM questions WHERE user_id = $1 ORDER BY ts DESC',
         [id]
       );
-      return rows.map(r => ({
+      const dbQ = rows.map(r => ({
         userId:   r.user_id,
         question: r.question,
         category: r.category || null,
@@ -258,11 +286,15 @@ async function getUserQuestions(userId) {
         verdict:  r.verdict,
         ts:       r.ts ? Number(r.ts) : Date.now(),
       }));
+      // Merge DB + in-memory, deduplicate by ts
+      const seen = new Set(dbQ.map(q => q.ts));
+      const extra = memQ.filter(q => !seen.has(q.ts));
+      return [...dbQ, ...extra].sort((a, b) => b.ts - a.ts);
     } catch (e) {
       console.error('[DB] getUserQuestions:', e.message);
     }
   }
-  return questionLog.filter(q => q.userId === id);
+  return memQ;
 }
 
 function getStats() {

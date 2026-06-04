@@ -38,7 +38,8 @@ const PORT         = process.env.PORT || 3000;
 const BOT_TOKEN    = process.env.BOT_TOKEN;
 const WEBAPP_URL   = process.env.WEBAPP_URL || `http://localhost:${PORT}`;
 const ADMIN_SECRET = process.env.ADMIN_SECRET || (BOT_TOKEN ? BOT_TOKEN.slice(0, 12) : 'oracle_admin');
-const sseClients  = new Set();
+const sseClients     = new Set();
+const limitNotifSent = new Set(); // userId_date — не спамити "ліміт" більше ніж раз на день
 
 // ─── Middleware ───────────────────────────────────────────────────────────────
 app.use(compression());
@@ -472,7 +473,9 @@ if (BOT_TOKEN) {
   ];
   let lastDailyDate = null;
 
-  let lastMidnightDate = null;
+  let lastMidnightDate  = null;
+  let lastPremExpDate   = null;
+  let lastRetentionDate = null;
 
   setInterval(async () => {
     const now     = new Date();
@@ -497,9 +500,64 @@ if (BOT_TOKEN) {
       }
     }
 
+    // ── 12:00 UTC — нагадування про закінчення преміуму (15:00 Київ) ──
+    if (utcH === 12 && lastPremExpDate !== dateStr) {
+      lastPremExpDate = dateStr;
+      const users = getUsers();
+      const expiring = users.filter(u => {
+        if (!u.isPremium || !u.premiumUntil) return false;
+        const msLeft = new Date(u.premiumUntil) - Date.now();
+        return msLeft > 0 && msLeft < 48 * 3_600_000;
+      });
+      console.log(`[PremExpiry] Notifying ${expiring.length} users`);
+      for (const u of expiring) {
+        const until = new Date(u.premiumUntil).toLocaleDateString('uk', { day: 'numeric', month: 'long' });
+        try {
+          await bot.sendMessage(u.userId,
+            `⭐ *Твій Преміум закінчується скоро\\!*\n\n📅 Діє до: *${escMd(until)}*\n\n🔄 Продовж зараз — не втрать безліміт питань\\!`,
+            { parse_mode: 'MarkdownV2', reply_markup: { inline_keyboard: [
+              [{ text: '⭐ Продовжити Преміум', web_app: { url: WEBAPP_URL } }],
+            ]}}
+          );
+        } catch {}
+        await new Promise(r => setTimeout(r, 80));
+      }
+    }
+
+    // ── 14:00 UTC — retention для неактивних 3 дні (17:00 Київ) ──
+    if (utcH === 14 && lastRetentionDate !== dateStr) {
+      lastRetentionDate = dateStr;
+      const users = getUsers();
+      const nowMs = Date.now();
+      // Тільки ті, кого не бачили 72-96 годин (день 3 — один раз)
+      const inactive = users.filter(u => {
+        if (!u.lastSeen) return false;
+        const h = (nowMs - u.lastSeen) / 3_600_000;
+        return h >= 72 && h < 96;
+      });
+      const MSGS = [
+        `🔮 *Оракул скучив за тобою\\.\\.\\.*\n\nДавно не задавав питань долі\\.\nПовертайся — зірки чекають\\!`,
+        `✨ *Зірки говорять про тебе\\.\\.\\.*\n\nОракул бачить важливі зміни на твоєму шляху\\.\nЗадай питання — дізнайся, що готує доля\\!`,
+        `🌙 *Місяць нагадує про тебе\\.\\.\\.*\n\nТи давно не питав Оракула\\.\n2 безкоштовних питання чекають\\!`,
+      ];
+      console.log(`[Retention] Notifying ${inactive.length} users`);
+      for (const u of inactive) {
+        const msg = MSGS[Math.floor(Math.random() * MSGS.length)];
+        try {
+          await bot.sendMessage(u.userId, msg, {
+            parse_mode: 'MarkdownV2',
+            reply_markup: { inline_keyboard: [[{ text: '🔮 Запитати Оракул', web_app: { url: WEBAPP_URL } }]] },
+          });
+        } catch {}
+        await new Promise(r => setTimeout(r, 80));
+      }
+    }
+
     // ── 21:00 UTC — reset нотифікація для тих хто вичерпав ліміт (00:00 Київ) ──
     if (utcH === 21 && lastMidnightDate !== dateStr) {
       lastMidnightDate = dateStr;
+      // Очистити щоденний список "ліміт надіслано"
+      limitNotifSent.clear();
       const users    = getUsers();
       // Тільки ті: не преміум, вичерпали ліміт, були активні останні 7 днів
       const limited  = users.filter(u =>
@@ -661,6 +719,19 @@ api.post('/ask', rateLimit, (req, res) => {
     try {
       const status = getStatus(userId);
       if (!status.canAsk) {
+        // Надіслати нотифікацію в бот — один раз на день
+        if (bot) {
+          const notifKey = `${userId}_${new Date().toISOString().slice(0, 10)}`;
+          if (!limitNotifSent.has(notifKey)) {
+            limitNotifSent.add(notifKey);
+            bot.sendMessage(userId,
+              `🔮 *Оракул мовчить\\.\\.\\.*\n\nТи вичерпав денний ліміт питань\\.\n\n⭐ *Отримай Преміум* — безліміт питань щодня\\!\n🌙 Або повернись опівночі — ліміт оновиться\\.`,
+              { parse_mode: 'MarkdownV2', reply_markup: { inline_keyboard: [
+                [{ text: '⭐ Отримати Преміум', web_app: { url: WEBAPP_URL } }],
+              ]}}
+            ).catch(() => {});
+          }
+        }
         return res.status(403).json({ error: 'limit', message: 'Лимит вопросов исчерпан', status });
       }
       increment(userId);
