@@ -94,123 +94,128 @@ function OrbCanvas(canvas, size, isMain) {
 
   let hue = 278, targetHue = 278, raf;
 
-  // Wisps config — fewer for small orb
-  const wispCount = isMain ? 7 : 4;
-  const wisps = Array.from({ length: wispCount }, (_, i) => ({
-    speed:  0.18 + i * 0.06,
-    speed2: 0.11 + i * 0.04,
-    phase:  i * (Math.PI * 2 / wispCount),
-    phase2: i * (Math.PI * 1.3 / wispCount),
-    size:   0.32 + (i % 3) * 0.10,
-    hOff:   i * 14 - 20,
+  // Randomly initialized wisps — organic, unique each load
+  const n = isMain ? 9 : 4;
+  const wisps = Array.from({ length: n }, () => ({
+    ph1: Math.random() * Math.PI * 2,
+    ph2: Math.random() * Math.PI * 2,
+    sp1: 0.10 + Math.random() * 0.16,
+    sp2: 0.06 + Math.random() * 0.11,
+    rx:  0.22 + Math.random() * 0.28,
+    ry:  0.14 + Math.random() * 0.22,
+    sz:  0.24 + Math.random() * 0.22,
+    ho:  (Math.random() - 0.5) * 56,   // hue offset: pink↔blue
+    al:  0.28 + Math.random() * 0.24,
   }));
 
   function drawFrame(t) {
     ctx.clearRect(0, 0, R * 2, R * 2);
 
-    /* ── Clip to sphere ── */
     ctx.save();
     ctx.beginPath();
-    ctx.arc(R, R, R * 0.915, 0, Math.PI * 2);
+    ctx.arc(R, R, R * 0.918, 0, Math.PI * 2);
     ctx.clip();
 
-    /* Base gradient — deep purple core */
-    const base = ctx.createRadialGradient(R * 0.62, R * 0.38, 0, R, R, R);
-    base.addColorStop(0.00, `hsl(${hue + 22}, 90%, 62%)`);
-    base.addColorStop(0.28, `hsl(${hue + 5},  100%, 38%)`);
-    base.addColorStop(0.58, `hsl(${hue - 10}, 100%, 18%)`);
-    base.addColorStop(0.82, `hsl(${hue - 20}, 100%, 8%)`);
-    base.addColorStop(1.00, `hsl(${hue - 30}, 100%, 2%)`);
+    // ── Base gradient: light source top-left, shadow bottom-right ──
+    const base = ctx.createRadialGradient(R * 0.52, R * 0.32, R * 0.01, R * 0.86, R * 0.88, R * 1.08);
+    base.addColorStop(0.00, `hsl(${hue + 30}, 86%, 70%)`);
+    base.addColorStop(0.16, `hsl(${hue + 12}, 100%, 46%)`);
+    base.addColorStop(0.40, `hsl(${hue},       100%, 28%)`);
+    base.addColorStop(0.66, `hsl(${hue - 12}, 100%, 12%)`);
+    base.addColorStop(0.88, `hsl(${hue - 24}, 100%, 4%)`);
+    base.addColorStop(1.00, `hsl(${hue - 32}, 100%, 1%)`);
     ctx.fillStyle = base;
     ctx.fillRect(0, 0, R * 2, R * 2);
 
-    /* Smoke wisps */
-    wisps.forEach((w, i) => {
-      const ax = t * w.speed  + w.phase;
-      const ay = t * w.speed2 + w.phase2;
-      const cx = R + Math.cos(ax) * R * 0.42;
-      const cy = R + Math.sin(ay) * R * 0.35;
-      const r  = R * (w.size + Math.sin(t * 0.38 + i) * 0.08);
+    // ── Smoke wisps ──
+    wisps.forEach(w => {
+      const cx = R + Math.cos(t * w.sp1 + w.ph1) * R * w.rx;
+      const cy = R + Math.sin(t * w.sp2 + w.ph2) * R * w.ry;
+      const r  = R * (w.sz + Math.sin(t * 0.33 + w.ph1 * 0.7) * 0.08);
 
       const g = ctx.createRadialGradient(cx, cy, 0, cx, cy, r);
-      const lum = 58 + (i % 3) * 7;
-      const alpha1 = isMain ? 0.42 : 0.38;
-      const alpha2 = isMain ? 0.18 : 0.14;
-      g.addColorStop(0,   `hsla(${hue + w.hOff + 15}, 95%, ${lum}%, ${alpha1})`);
-      g.addColorStop(0.5, `hsla(${hue + w.hOff},      90%, ${lum - 12}%, ${alpha2})`);
-      g.addColorStop(1,   'transparent');
+      const lum = 56 + Math.abs(w.ho) * 0.12;
+      g.addColorStop(0.00, `hsla(${hue + w.ho + 22}, 94%, ${lum}%, ${w.al})`);
+      g.addColorStop(0.38, `hsla(${hue + w.ho +  8}, 88%, ${lum - 12}%, ${w.al * 0.50})`);
+      g.addColorStop(0.72, `hsla(${hue + w.ho},      80%, ${lum - 22}%, ${w.al * 0.15})`);
+      g.addColorStop(1.00, 'transparent');
       ctx.fillStyle = g;
       ctx.fillRect(0, 0, R * 2, R * 2);
     });
 
-    /* Inner nebula center glow */
-    const center = ctx.createRadialGradient(R, R, 0, R, R, R * 0.52);
-    center.addColorStop(0, `hsla(${hue + 18}, 85%, 78%, 0.20)`);
-    center.addColorStop(1, 'transparent');
-    ctx.fillStyle = center;
+    // ── Pulsing inner core (breathes life into the ball) ──
+    const pulse = 0.5 + Math.sin(t * 1.15) * 0.5;
+    const core = ctx.createRadialGradient(R, R, 0, R, R, R * 0.46);
+    core.addColorStop(0,    `hsla(${hue + 28}, 78%, 90%, ${0.20 + pulse * 0.12})`);
+    core.addColorStop(0.50, `hsla(${hue + 14}, 68%, 65%, 0.07)`);
+    core.addColorStop(1,    'transparent');
+    ctx.fillStyle = core;
     ctx.fillRect(0, 0, R * 2, R * 2);
 
-    /* Fresnel rim darkening */
-    const rim = ctx.createRadialGradient(R, R, R * 0.60, R, R, R * 0.915);
-    rim.addColorStop(0,   'transparent');
-    rim.addColorStop(0.7, `hsla(${hue - 15}, 80%, 8%, 0.10)`);
-    rim.addColorStop(1,   `hsla(${hue - 20}, 80%, 4%, 0.55)`);
-    ctx.fillStyle = rim;
+    // ── Edge vignette (Fresnel depth) ──
+    const vign = ctx.createRadialGradient(R, R, R * 0.52, R, R, R * 0.918);
+    vign.addColorStop(0,    'transparent');
+    vign.addColorStop(0.65, `hsla(${hue - 10}, 80%, 5%, 0.16)`);
+    vign.addColorStop(1,    `hsla(${hue - 24}, 80%, 2%, 0.72)`);
+    ctx.fillStyle = vign;
     ctx.fillRect(0, 0, R * 2, R * 2);
 
-    /* Glass sheen overlay */
-    const glass = ctx.createRadialGradient(R * 1.12, R * 0.82, R * 0.62, R, R, R * 0.93);
-    glass.addColorStop(0,   'transparent');
-    glass.addColorStop(0.75, `hsla(${hue + 35}, 65%, 88%, 0.05)`);
-    glass.addColorStop(1,    `hsla(${hue + 45}, 55%, 95%, 0.20)`);
-    ctx.fillStyle = glass;
+    // ── Glass sheen (environment reflection, upper-right) ──
+    const sheen = ctx.createRadialGradient(R * 1.18, R * 0.72, R * 0.55, R, R, R * 0.90);
+    sheen.addColorStop(0,    'transparent');
+    sheen.addColorStop(0.65, `hsla(${hue + 42}, 55%, 94%, 0.08)`);
+    sheen.addColorStop(1,    `hsla(${hue + 52}, 44%, 99%, 0.28)`);
+    ctx.fillStyle = sheen;
     ctx.fillRect(0, 0, R * 2, R * 2);
 
-    /* Primary specular highlight (large, soft) */
-    const hl1 = ctx.createRadialGradient(R * 0.50, R * 0.35, 0, R * 0.50, R * 0.35, R * 0.30);
-    hl1.addColorStop(0,   'rgba(255,255,255,0.68)');
-    hl1.addColorStop(0.45, 'rgba(255,255,255,0.22)');
-    hl1.addColorStop(1,   'transparent');
-    ctx.fillStyle = hl1;
-    ctx.fillRect(0, 0, R * 2, R * 2);
-
-    /* Secondary tight highlight */
-    const hl2 = ctx.createRadialGradient(R * 0.60, R * 0.44, 0, R * 0.60, R * 0.44, R * 0.075);
-    hl2.addColorStop(0, 'rgba(255,255,255,0.90)');
-    hl2.addColorStop(1, 'transparent');
-    ctx.fillStyle = hl2;
-    ctx.fillRect(0, 0, R * 2, R * 2);
-
-    /* Subtle bottom reflection */
+    // ── Rim light from bottom-left (secondary light source → 3D depth) ──
     if (isMain) {
-      const ref = ctx.createRadialGradient(R * 0.7, R * 1.65, 0, R * 0.7, R * 1.65, R * 0.30);
-      ref.addColorStop(0, `hsla(${hue + 30}, 70%, 80%, 0.12)`);
-      ref.addColorStop(1, 'transparent');
-      ctx.fillStyle = ref;
+      const rim2 = ctx.createRadialGradient(R * (-0.15), R * 1.55, 0, R * (-0.15), R * 1.55, R * 0.85);
+      rim2.addColorStop(0,    `hsla(${hue - 28}, 88%, 70%, 0.14)`);
+      rim2.addColorStop(0.50, `hsla(${hue - 18}, 78%, 50%, 0.05)`);
+      rim2.addColorStop(1,    'transparent');
+      ctx.fillStyle = rim2;
       ctx.fillRect(0, 0, R * 2, R * 2);
     }
 
+    // ── Primary specular highlight (large, soft, white) ──
+    const hl1 = ctx.createRadialGradient(R * 0.44, R * 0.32, 0, R * 0.44, R * 0.32, R * 0.34);
+    hl1.addColorStop(0,    'rgba(255,255,255,0.82)');
+    hl1.addColorStop(0.35, 'rgba(255,255,255,0.30)');
+    hl1.addColorStop(0.68, 'rgba(255,255,255,0.08)');
+    hl1.addColorStop(1,    'transparent');
+    ctx.fillStyle = hl1;
+    ctx.fillRect(0, 0, R * 2, R * 2);
+
+    // ── Tight secondary specular (glass glint) ──
+    const hl2 = ctx.createRadialGradient(R * 0.56, R * 0.42, 0, R * 0.56, R * 0.42, R * 0.072);
+    hl2.addColorStop(0,   'rgba(255,255,255,0.96)');
+    hl2.addColorStop(0.5, 'rgba(255,255,255,0.40)');
+    hl2.addColorStop(1,   'transparent');
+    ctx.fillStyle = hl2;
+    ctx.fillRect(0, 0, R * 2, R * 2);
+
     ctx.restore();
 
-    /* Rim stroke */
+    // ── Rim stroke ──
     ctx.save();
     ctx.beginPath();
-    ctx.arc(R, R, R * 0.915, 0, Math.PI * 2);
-    ctx.strokeStyle = `hsla(${hue + 25}, 100%, 80%, 0.38)`;
-    ctx.lineWidth = dpr * 1.2;
+    ctx.arc(R, R, R * 0.918, 0, Math.PI * 2);
+    ctx.strokeStyle = `hsla(${hue + 32}, 100%, 85%, 0.48)`;
+    ctx.lineWidth = dpr * 1.4;
     ctx.stroke();
     ctx.restore();
   }
 
   function tick() {
     raf = requestAnimationFrame(tick);
-    hue += (targetHue - hue) * 0.022;
+    hue += (targetHue - hue) * 0.026;
     drawFrame(Date.now() * 0.001);
   }
   tick();
 
   function setColor(colorName) {
-    const map = { yes: 150, no: 350, maybe: 44, default: 278 };
+    const map = { yes: 152, no: 352, maybe: 44, default: 278 };
     targetHue = map[colorName] ?? 278;
   }
 
@@ -477,6 +482,7 @@ const input     = document.getElementById('question-input');
 const charCount = document.getElementById('char-count');
 const askBtn    = document.getElementById('ask-btn');
 const orbStatus = document.getElementById('orb-status');
+const orbWrap   = document.getElementById('orb-wrapper');
 
 input.addEventListener('input', () => { charCount.textContent = input.value.length; });
 
@@ -523,28 +529,29 @@ async function askOracle() {
   }
 
   askBtn.disabled = true;
+  orbWrap?.classList.add('asking');
   showLoading(true);
 
-  const apiPromise = fetch('/api/ask', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      question, userId,
-      username:  tgUsername  || undefined,
-      firstName: tgFirstName || undefined,
-    })
-  });
-
-  const phrases = LANGS[currentLang].thinking;
-  for (let i = 0; i < phrases.length; i++) {
-    orbStatus.textContent = phrases[i];
-    await new Promise(r => setTimeout(r, 900));
-  }
-
   try {
+    const apiPromise = fetch('/api/ask', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        question, userId,
+        username:  tgUsername  || undefined,
+        firstName: tgFirstName || undefined,
+      })
+    });
+
+    const phrases = LANGS[currentLang].thinking;
+    for (let i = 0; i < phrases.length; i++) {
+      orbStatus.textContent = phrases[i];
+      await new Promise(r => setTimeout(r, 900));
+    }
+
     const res = await apiPromise;
     if (res.status === 403) { showPaywall(); return; }
-    if (!res.ok) throw new Error();
+    if (!res.ok) throw new Error('server error');
     const data = await res.json();
     if (data.status) { userStatus = data.status; updateCounter(); }
     showAnswer(question, data.answer);
@@ -553,6 +560,7 @@ async function askOracle() {
     setTimeout(() => { orbStatus.textContent = LANGS[currentLang].orbDefault; }, 3000);
   } finally {
     askBtn.disabled = false;
+    orbWrap?.classList.remove('asking');
     showLoading(false);
   }
 }
