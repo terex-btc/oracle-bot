@@ -343,17 +343,16 @@ if (BOT_TOKEN) {
 
   // ── Оплата Stars ────────────────────────────────────────────────
   bot.on('pre_checkout_query', async (query) => {
-    const payload = query?.invoice_payload || '';
-    // Validate payload belongs to our bot
-    if (!payload.startsWith('oracle_')) {
-      return bot.answerPreCheckoutQuery(query.id, false, 'Невідомий платіж');
-    }
-    // Validate currency
-    if (query.currency !== 'XTR') {
-      return bot.answerPreCheckoutQuery(query.id, false, 'Невірна валюта');
-    }
-    await bot.answerPreCheckoutQuery(query.id, true);
-    console.log(`[PreCheckout] OK userId=${query.from?.id} payload=${payload} stars=${query.total_amount}`);
+    try {
+      const payload = query?.invoice_payload || '';
+      if (!payload.startsWith('oracle_') || query.currency !== 'XTR') {
+        await bot.answerPreCheckoutQuery(query.id, false, 'Невідомий платіж').catch(() => {});
+        console.warn(`[PreCheckout] REJECTED payload=${payload} currency=${query.currency}`);
+        return;
+      }
+      await bot.answerPreCheckoutQuery(query.id, true);
+      console.log(`[PreCheckout] OK userId=${query.from?.id} payload=${payload} stars=${query.total_amount}`);
+    } catch (e) { console.error('[pre_checkout_query]', e.message); }
   });
 
   bot.on('message', async (msg) => {
