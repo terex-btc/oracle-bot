@@ -472,25 +472,51 @@ if (BOT_TOKEN) {
   ];
   let lastDailyDate = null;
 
+  let lastMidnightDate = null;
+
   setInterval(async () => {
-    const now = new Date();
+    const now     = new Date();
+    const utcH    = now.getUTCHours();
     const dateStr = now.toISOString().slice(0, 10);
-    if (now.getUTCHours() !== 10 || lastDailyDate === dateStr) return;
-    lastDailyDate = dateStr;
 
-    const users = getUsers();
-    const active = users.filter(u => u.lastSeen && Date.now() - u.lastSeen < 30 * 86_400_000);
-    const q = DAILY_QUESTIONS[new Date().getDate() % DAILY_QUESTIONS.length];
-    console.log(`[Daily] Sending question to ${active.length} users`);
+    // ── 10:00 UTC — питання дня (13:00 Київ) ──
+    if (utcH === 10 && lastDailyDate !== dateStr) {
+      lastDailyDate = dateStr;
+      const users  = getUsers();
+      const active = users.filter(u => u.lastSeen && Date.now() - u.lastSeen < 30 * 86_400_000);
+      const q      = DAILY_QUESTIONS[new Date().getDate() % DAILY_QUESTIONS.length];
+      console.log(`[Daily] Sending question to ${active.length} users`);
+      for (const u of active) {
+        try {
+          await bot.sendMessage(u.userId,
+            `🔮 *Питання дня від Оракула:*\n\n_"${q}"_\n\nНатисни — і дізнайся відповідь долі\\.`,
+            { parse_mode: 'MarkdownV2', reply_markup: { inline_keyboard: [[{ text: '🔮 Отримати відповідь', web_app: { url: `${WEBAPP_URL}?q=${encodeURIComponent(q)}` } }]] } }
+          );
+        } catch {}
+        await new Promise(r => setTimeout(r, 80));
+      }
+    }
 
-    for (const u of active) {
-      try {
-        await bot.sendMessage(u.userId,
-          `🔮 *Питання дня від Оракула:*\n\n_"${q}"_\n\nНатисни — і дізнайся відповідь долі\\.`,
-          { parse_mode: 'MarkdownV2', reply_markup: { inline_keyboard: [[{ text: '🔮 Отримати відповідь', web_app: { url: `${WEBAPP_URL}?q=${encodeURIComponent(q)}` } }]] } }
-        );
-      } catch {}
-      await new Promise(r => setTimeout(r, 80));
+    // ── 21:00 UTC — reset нотифікація для тих хто вичерпав ліміт (00:00 Київ) ──
+    if (utcH === 21 && lastMidnightDate !== dateStr) {
+      lastMidnightDate = dateStr;
+      const users    = getUsers();
+      // Тільки ті: не преміум, вичерпали ліміт, були активні останні 7 днів
+      const limited  = users.filter(u =>
+        !u.isPremium &&
+        u.dailyCount >= 2 &&
+        u.lastSeen  && Date.now() - u.lastSeen < 7 * 86_400_000
+      );
+      console.log(`[MidnightReset] Notifying ${limited.length} users`);
+      for (const u of limited) {
+        try {
+          await bot.sendMessage(u.userId,
+            `🌙 *Твій ліміт відновлено\\!*\n\n🔮 2 нових питання вже чекають тебе\\.\n\nЩо запитаєш у долі сьогодні?`,
+            { parse_mode: 'MarkdownV2', reply_markup: { inline_keyboard: [[{ text: '🔮 Запитати Оракул', web_app: { url: WEBAPP_URL } }]] } }
+          );
+        } catch {}
+        await new Promise(r => setTimeout(r, 80));
+      }
     }
   }, 60_000);
 

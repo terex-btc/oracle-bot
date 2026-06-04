@@ -1014,6 +1014,18 @@ body.keyboard-open .char-counter { display: none; }
 }
 .btn-ref:active { transform: scale(0.97); }
 
+.paywall-legal {
+  margin-top: 14px;
+  text-align: center;
+  font-size: 11px;
+  color: rgba(255,255,255,0.28);
+}
+.paywall-legal a {
+  color: rgba(139,61,255,0.6);
+  text-decoration: none;
+}
+.paywall-legal a:hover { color: var(--purple-l); }
+
 /* ─── Loading Overlay ───────────────────────────────────────── */
 .loading-overlay {
   position: fixed;
