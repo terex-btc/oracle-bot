@@ -82,6 +82,10 @@ if (BOT_TOKEN) {
   bot = new TelegramBot(BOT_TOKEN, { webHook: false });
   bot.setWebHook(`${WEBAPP_URL}${WEBHOOK_PATH}`).catch(e => console.error('[Bot] setWebHook error:', e.message));
 
+  // Prevent crashes from Telegram API errors inside async handlers
+  bot.on('error',         (err) => console.error('[Bot] error:',         err.message));
+  bot.on('polling_error', (err) => console.error('[Bot] polling_error:', err.message));
+
   // Telegram pushes updates to this endpoint
   app.post(WEBHOOK_PATH, (req, res) => {
     bot.processUpdate(req.body);
@@ -222,72 +226,82 @@ if (BOT_TOKEN) {
 
   // Callback query
   bot.on('callback_query', async (query) => {
-    await bot.answerCallbackQuery(query.id);
-    if (query.from?.id) setUserInfo(query.from.id, { username: query.from.username, firstName: query.from.first_name });
-    const data   = query.data;
-    const chatId = query.message.chat.id;
-    const userId = query.from.id;
-    if      (data === 'buy_premium' || data === 'buy_month') await sendPremiumInvoice(chatId, userId, 'month');
-    else if (data === 'buy_week')     await sendPremiumInvoice(chatId, userId, 'week');
-    else if (data === 'buy_lifetime') await sendPremiumInvoice(chatId, userId, 'lifetime');
-    else if (data === 'gift_7')       await sendGiftInvoice(chatId, userId, 'gift7');
-    else if (data === 'gift_30')      await sendGiftInvoice(chatId, userId, 'gift30');
-    else if (data === 'get_ref') {
-      const refLink = `https://t.me/oracle_666bot?start=ref_${userId}`;
-      await bot.sendMessage(chatId,
-        `🔗 *Твоє реферальне посилання:*\n\n${refLink}\n\nПоділись з другом — ви обидва отримаєте *\\+3 питання*\\! 🎁`,
-        { parse_mode: 'MarkdownV2' }
-      );
-    }
+    try {
+      await bot.answerCallbackQuery(query.id).catch(() => {});
+      if (query.from?.id) setUserInfo(query.from.id, { username: query.from.username, firstName: query.from.first_name });
+      const data   = query.data;
+      const chatId = query.message?.chat?.id;
+      const userId = query.from?.id;
+      if (!chatId) return;
+      if      (data === 'buy_premium' || data === 'buy_month') await sendPremiumInvoice(chatId, userId, 'month');
+      else if (data === 'buy_week')     await sendPremiumInvoice(chatId, userId, 'week');
+      else if (data === 'buy_lifetime') await sendPremiumInvoice(chatId, userId, 'lifetime');
+      else if (data === 'gift_7')       await sendGiftInvoice(chatId, userId, 'gift7');
+      else if (data === 'gift_30')      await sendGiftInvoice(chatId, userId, 'gift30');
+      else if (data === 'get_ref') {
+        const refLink = `https://t.me/oracle_666bot?start=ref_${userId}`;
+        await bot.sendMessage(chatId,
+          `🔗 *Твоє реферальне посилання:*\n\n${refLink}\n\nПоділись з другом — ви обидва отримаєте *\\+3 питання*\\! 🎁`,
+          { parse_mode: 'MarkdownV2' }
+        );
+      }
+    } catch (e) { console.error('[callback_query]', e.message); }
   });
 
   // /ask
   bot.onText(/\/ask (.+)/, async (msg, match) => {
-    const chatId   = msg.chat.id;
-    const userId   = msg.from?.id;
-    const question = match[1].trim();
-    if (userId) {
-      const status = getStatus(userId);
-      if (!status.canAsk) {
-        await bot.sendMessage(chatId,
-          `🔮 Ти вичерпав ліміт питань на сьогодні.\n\n⭐ Отримай Премиум — питай скільки завгодно!`,
-          { parse_mode: 'Markdown', reply_markup: { inline_keyboard: [[{ text: '⭐ Купити Премиум', callback_data: 'buy_premium' }]] } }
-        );
-        return;
+    try {
+      const chatId   = msg.chat.id;
+      const userId   = msg.from?.id;
+      const question = match[1].trim();
+      if (userId) {
+        const status = getStatus(userId);
+        if (!status.canAsk) {
+          await bot.sendMessage(chatId,
+            `🔮 Ти вичерпав ліміт питань на сьогодні.\n\n⭐ Отримай Преміум — питай скільки завгодно!`,
+            { parse_mode: 'Markdown', reply_markup: { inline_keyboard: [[{ text: '⭐ Купити Преміум', callback_data: 'buy_premium' }]] } }
+          );
+          return;
+        }
+        increment(userId);
       }
-      increment(userId);
-    }
-    const answer     = getOracleAnswer();
-    const colorEmoji = answer.color === 'yes' ? '🟢' : answer.color === 'no' ? '🔴' : '🟡';
-    await bot.sendMessage(chatId,
-      `🔮 *Оракул слышит тебя...*\n\n❓ _${question}_\n\n${colorEmoji} *${answer.title}*\n${answer.verdict}\n\n_${answer.message}_`,
-      { parse_mode: 'Markdown', reply_markup: { inline_keyboard: [[{ text: '🔮 Задать новый вопрос', web_app: { url: WEBAPP_URL } }]] } }
-    );
+      const answer     = getOracleAnswer();
+      const colorEmoji = answer.color === 'yes' ? '🟢' : answer.color === 'no' ? '🔴' : '🟡';
+      await bot.sendMessage(chatId,
+        `🔮 *Оракул відповідає...*\n\n❓ _${question}_\n\n${colorEmoji} *${answer.title}*\n${answer.verdict}\n\n_${answer.message}_`,
+        { parse_mode: 'Markdown', reply_markup: { inline_keyboard: [[{ text: '🔮 Задати нове питання', web_app: { url: WEBAPP_URL } }]] } }
+      );
+    } catch (e) { console.error('[/ask]', e.message); }
   });
 
   bot.onText(/^\/ask$/, async (msg) => {
-    await bot.sendMessage(msg.chat.id, '🔮 Напиши: `/ask Твой вопрос?`', { parse_mode: 'Markdown' });
+    try { await bot.sendMessage(msg.chat.id, '🔮 Напиши: `/ask Твоє питання?`', { parse_mode: 'Markdown' }); }
+    catch (e) { console.error('[/ask empty]', e.message); }
   });
 
   bot.onText(/\/help/, async (msg) => {
-    await bot.sendMessage(msg.chat.id,
-      `🔮 *Оракул Судьбы*\n\n/start — Відкрити бота\n/ask [питання] — Швидке питання\n/premium — Купити преміум\n/gift — Подарувати преміум другу\n/ref — Реферальне посилання\n/help — Довідка\n\n🆓 Безкоштовно: 2 питання / день\n⭐ Преміум від 100 ★`,
-      { parse_mode: 'Markdown', reply_markup: { inline_keyboard: [[{ text: '🔮 Відкрити Оракул', web_app: { url: WEBAPP_URL } }]] } }
-    );
+    try {
+      await bot.sendMessage(msg.chat.id,
+        `🔮 *Оракул Долі*\n\n/start — Відкрити бота\n/ask [питання] — Швидке питання\n/premium — Купити Преміум ⭐\n/gift — Подарувати Преміум другу 🎁\n/ref — Реферальне посилання (+3 питання)\n/help — Довідка\n\n🆓 Безкоштовно: 2 питання / день\n⭐ Преміум від 100 ★`,
+        { parse_mode: 'Markdown', reply_markup: { inline_keyboard: [[{ text: '🔮 Відкрити Оракул', web_app: { url: WEBAPP_URL } }]] } }
+      );
+    } catch (e) { console.error('[/help]', e.message); }
   });
 
   // /gift — gifting flow
   bot.onText(/\/gift/, async (msg) => {
-    await bot.sendMessage(msg.chat.id,
-      `🎁 *Подаруй Преміум другу\\!*\n\nОбери план — і ми надішлемо тобі посилання\\-подарунок, яким можна поділитись:`,
-      {
-        parse_mode: 'MarkdownV2',
-        reply_markup: { inline_keyboard: [
-          [{ text: '🎁 7 днів Преміум — 80 ★',  callback_data: 'gift_7'  }],
-          [{ text: '🎁 30 днів Преміум — 250 ★', callback_data: 'gift_30' }],
-        ]},
-      }
-    );
+    try {
+      await bot.sendMessage(msg.chat.id,
+        `🎁 *Подаруй Преміум другу\\!*\n\nОбери план — і ми надішлемо тобі посилання\\-подарунок, яким можна поділитись:`,
+        {
+          parse_mode: 'MarkdownV2',
+          reply_markup: { inline_keyboard: [
+            [{ text: '🎁 7 днів Преміум — 80 ★',  callback_data: 'gift_7'  }],
+            [{ text: '🎁 30 днів Преміум — 250 ★', callback_data: 'gift_30' }],
+          ]},
+        }
+      );
+    } catch (e) { console.error('[/gift]', e.message); }
   });
 
   // Inline mode — @oracle_666bot питання
@@ -350,65 +364,70 @@ if (BOT_TOKEN) {
 
     console.log(`[Payment] userId=${userId} stars=${stars} payload=${payload}`);
 
-    if (userId) setUserInfo(userId, { username: msg.from?.username, firstName: msg.from?.first_name });
-    if (!payload?.startsWith('oracle_')) return;
+    try {
+      if (userId) setUserInfo(userId, { username: msg.from?.username, firstName: msg.from?.first_name });
+      if (!payload?.startsWith('oracle_')) return;
 
-    // ── Подарунки: oracle_gift7_UID / oracle_gift30_UID ──
-    if (payload.startsWith('oracle_gift')) {
-      const giftPlanKey = Object.keys(GIFT_PLANS).find(k => payload.startsWith(`oracle_${k}_`));
-      const gp = giftPlanKey ? GIFT_PLANS[giftPlanKey] : { days: 30 };
-      const code = createGift(userId, gp.days);
-      const shareUrl = `https://t.me/oracle_666bot?start=gift_${code}`;
-      await bot.sendMessage(msg.chat.id,
-        `🎁 *Подарунок готовий\\!*\n\n*${escMd(gp.days + ' днів Преміум')}* — посилання для друга:\n\n\`${code}\`\n\n${escMd(shareUrl)}\n\n_Коли друг натисне посилання — він отримає Преміум автоматично\\!_`,
-        {
-          parse_mode: 'MarkdownV2',
-          reply_markup: { inline_keyboard: [[
-            { text: '🎁 Поділитись подарунком', url: `https://t.me/share/url?url=${encodeURIComponent(shareUrl)}&text=${encodeURIComponent('🔮 Тримай подарунок — Оракул Долі чекає тебе!')}` }
-          ]]}
-        }
-      );
-      console.log(`[Gift] userId=${userId} code=${code} days=${gp.days} stars=${stars}`);
-      return;
-    }
-
-    // ── Пакети питань: oracle_pack5_UID / oracle_pack20_UID ──
-    if (payload.startsWith('oracle_pack')) {
-      const packKey = Object.keys(PACK_CONFIG).find(k => payload.startsWith(`oracle_${k}_`));
-      const pack = packKey ? PACK_CONFIG[packKey] : null;
-      // Verify stars match expected amount (allow ±1 tolerance for Telegram rounding)
-      if (pack && Math.abs(stars - pack.stars) > 1) {
-        console.warn(`[Pack] stars mismatch: expected=${pack.stars} got=${stars} userId=${userId}`);
+      // ── Подарунки: oracle_gift7_UID / oracle_gift30_UID ──
+      if (payload.startsWith('oracle_gift')) {
+        const giftPlanKey = Object.keys(GIFT_PLANS).find(k => payload.startsWith(`oracle_${k}_`));
+        const gp = giftPlanKey ? GIFT_PLANS[giftPlanKey] : { days: 30 };
+        const code = createGift(userId, gp.days);
+        const shareUrl = `https://t.me/oracle_666bot?start=gift_${code}`;
+        try {
+          await bot.sendMessage(msg.chat.id,
+            `🎁 *Подарунок готовий\\!*\n\n*${escMd(gp.days + ' днів Преміум')}* — посилання для друга:\n\n\`${code}\`\n\n${escMd(shareUrl)}\n\n_Коли друг натисне посилання — він отримає Преміум автоматично\\!_`,
+            { parse_mode: 'MarkdownV2', reply_markup: { inline_keyboard: [[
+              { text: '🎁 Поділитись подарунком', url: `https://t.me/share/url?url=${encodeURIComponent(shareUrl)}&text=${encodeURIComponent('🔮 Тримай подарунок — Оракул Долі чекає тебе!')}` }
+            ]]} }
+          );
+        } catch (e) { console.error('[Gift] sendMessage failed:', e.message); }
+        console.log(`[Gift] userId=${userId} code=${code} days=${gp.days} stars=${stars}`);
+        return;
       }
-      const amount = pack ? pack.questions : 5;
-      const newTotal = addBonus(userId, amount);
-      await bot.sendMessage(msg.chat.id,
-        `🎁 *Пакет питань отримано!*\n\n🔮 *+${amount} питань* додано до твого балансу\n💫 Всього бонусних питань: *${newTotal}*\n\n_Задавай питання — доля чекає!_`,
-        { parse_mode: 'Markdown', reply_markup: { inline_keyboard: [[{ text: '🔮 Відкрити Оракул', web_app: { url: WEBAPP_URL } }]] } }
-      );
-      console.log(`[Pack] userId=${userId} pack=${packKey} amount=${amount} total=${newTotal} stars=${stars}`);
-      return;
+
+      // ── Пакети питань: oracle_pack5_UID / oracle_pack20_UID ──
+      if (payload.startsWith('oracle_pack')) {
+        const packKey = Object.keys(PACK_CONFIG).find(k => payload.startsWith(`oracle_${k}_`));
+        const pack = packKey ? PACK_CONFIG[packKey] : null;
+        if (pack && Math.abs(stars - pack.stars) > 1) {
+          console.warn(`[Pack] stars mismatch: expected=${pack.stars} got=${stars} userId=${userId}`);
+        }
+        const amount = pack ? pack.questions : 5;
+        const newTotal = addBonus(userId, amount);
+        try {
+          await bot.sendMessage(msg.chat.id,
+            `🎁 *Пакет питань отримано!*\n\n🔮 *+${amount} питань* додано до твого балансу\n💫 Всього бонусних питань: *${newTotal}*\n\n_Задавай питання — доля чекає!_`,
+            { parse_mode: 'Markdown', reply_markup: { inline_keyboard: [[{ text: '🔮 Відкрити Оракул', web_app: { url: WEBAPP_URL } }]] } }
+          );
+        } catch (e) { console.error('[Pack] sendMessage failed:', e.message); }
+        console.log(`[Pack] userId=${userId} pack=${packKey} amount=${amount} total=${newTotal} stars=${stars}`);
+        return;
+      }
+
+      // ── Преміум плани: oracle_week_UID / oracle_month_UID / oracle_lifetime_UID ──
+      let days = 30;
+      if (payload.startsWith('oracle_week_'))     days = 7;
+      if (payload.startsWith('oracle_lifetime_')) days = 36500;
+
+      const expectedPlan = Object.values(PLAN_CONFIG).find(p => p.days === days);
+      if (expectedPlan && Math.abs(stars - expectedPlan.stars) > 1) {
+        console.warn(`[Premium] stars mismatch: expected=${expectedPlan.stars} got=${stars} userId=${userId}`);
+      }
+
+      const until = activatePremium(userId, days);
+      const date  = new Date(until).toLocaleDateString('uk', { day: 'numeric', month: 'long', year: 'numeric' });
+      const planLabel = days === 7 ? '7 днів' : days === 36500 ? 'Назавжди ♾️' : '30 днів';
+      try {
+        await bot.sendMessage(msg.chat.id,
+          `✨ *Ласкаво просимо до Преміум!*\n\n⭐ Оракул відповідає без обмежень\n📅 План: *${planLabel}*\n📅 Активний до: *${date}*\n\n🔮 Задавай питання — доля чекає!`,
+          { parse_mode: 'Markdown', reply_markup: { inline_keyboard: [[{ text: '🔮 Відкрити Оракул', web_app: { url: WEBAPP_URL } }]] } }
+        );
+      } catch (e) { console.error('[Premium] sendMessage failed:', e.message); }
+      console.log(`[Premium] userId=${userId} plan=${planLabel} until=${until} stars=${stars}`);
+    } catch (e) {
+      console.error('[Payment] handler error:', e.message);
     }
-
-    // ── Преміум плани: oracle_week_UID / oracle_month_UID / oracle_lifetime_UID ──
-    let days = 30;
-    if (payload.startsWith('oracle_week_'))     days = 7;
-    if (payload.startsWith('oracle_lifetime_')) days = 36500;
-
-    // Verify stars amount matches expected plan price
-    const expectedPlan = Object.values(PLAN_CONFIG).find(p => p.days === days);
-    if (expectedPlan && Math.abs(stars - expectedPlan.stars) > 1) {
-      console.warn(`[Premium] stars mismatch: expected=${expectedPlan.stars} got=${stars} userId=${userId}`);
-    }
-
-    const until = activatePremium(userId, days);
-    const date  = new Date(until).toLocaleDateString('uk', { day: 'numeric', month: 'long', year: 'numeric' });
-    const planLabel = days === 7 ? '7 днів' : days === 36500 ? 'Назавжди ♾️' : '30 днів';
-    await bot.sendMessage(msg.chat.id,
-      `✨ *Ласкаво просимо до Преміум!*\n\n⭐ Оракул відповідає без обмежень\n📅 План: *${planLabel}*\n📅 Активний до: *${date}*\n\n🔮 Задавай питання — доля чекає!`,
-      { parse_mode: 'Markdown', reply_markup: { inline_keyboard: [[{ text: '🔮 Відкрити Оракул', web_app: { url: WEBAPP_URL } }]] } }
-    );
-    console.log(`[Premium] userId=${userId} plan=${planLabel} until=${until} stars=${stars}`);
   });
 
   console.log('[Bot] Oracle Bot запущено (webhook mode)');
