@@ -684,6 +684,14 @@ adminApi.get('/user/:userId/questions', async (req, res) => {
   catch (e) { res.status(500).json({ error: e.message }); }
 });
 
+adminApi.post('/user/:userId/premium', (req, res) => {
+  try {
+    const days  = parseInt(req.body.days) || 36500;
+    const until = activatePremium(req.params.userId, days);
+    res.json({ ok: true, userId: req.params.userId, days, until });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
 adminApi.get('/funnel', (req, res) => {
   try { res.json(getFunnelStats()); }
   catch (e) { res.status(500).json({ error: e.message }); }
