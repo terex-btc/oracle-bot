@@ -106,8 +106,20 @@ function OrbCanvas(canvas, size, isMain) {
     rx:  0.22 + Math.random() * 0.28,
     ry:  0.14 + Math.random() * 0.22,
     sz:  0.24 + Math.random() * 0.22,
-    ho:  (Math.random() - 0.5) * 56,   // hue offset: pink↔blue
+    ho:  (Math.random() - 0.5) * 56,
     al:  0.28 + Math.random() * 0.24,
+  }));
+
+  const sparkles = Array.from({ length: isMain ? 24 : 8 }, () => ({
+    r:   0.06 + Math.random() * 0.78,
+    ph:  Math.random() * Math.PI * 2,
+    spd: 0.08 + Math.random() * 0.22,
+    epy: 0.48 + Math.random() * 0.52,
+    sz:  0.9 + Math.random() * 2.4,
+    al:  0.38 + Math.random() * 0.52,
+    tw:  Math.random() * Math.PI * 2,
+    tws: 0.6 + Math.random() * 2.2,
+    ho:  (Math.random() - 0.5) * 90,
   }));
 
   function drawFrame(t) {
@@ -145,6 +157,32 @@ function OrbCanvas(canvas, size, isMain) {
       ctx.fillRect(0, 0, R * 2, R * 2);
     });
 
+    // ── Nebula swirl (two opposing rotating blobs) ──
+    [[t * 0.09, 0.60, 38], [t * 0.09 + Math.PI, 0.52, -30]].forEach(([ang, fac, dh]) => {
+      const sx = R + Math.cos(ang) * R * 0.27;
+      const sy = R + Math.sin(ang) * R * 0.27;
+      const g  = ctx.createRadialGradient(sx, sy, 0, sx, sy, R * fac);
+      g.addColorStop(0,    `hsla(${hue + dh}, 92%, 66%, 0.20)`);
+      g.addColorStop(0.48, `hsla(${hue + dh / 2}, 82%, 50%, 0.08)`);
+      g.addColorStop(1,    'transparent');
+      ctx.fillStyle = g;
+      ctx.fillRect(0, 0, R * 2, R * 2);
+    });
+
+    // ── Inner sparkles / floating stars ──
+    sparkles.forEach(s => {
+      const ang  = t * s.spd + s.ph;
+      const dist = s.r * R * 0.78;
+      const sx   = R + Math.cos(ang) * dist;
+      const sy   = R + Math.sin(ang * s.epy) * dist * 0.82;
+      const tw   = 0.5 + Math.sin(t * s.tws + s.tw) * 0.5;
+      const sz   = s.sz * dpr * (0.4 + tw * 0.7);
+      ctx.beginPath();
+      ctx.arc(sx, sy, Math.max(sz, 0.5), 0, Math.PI * 2);
+      ctx.fillStyle = `hsla(${hue + s.ho + 28}, 95%, 95%, ${s.al * tw})`;
+      ctx.fill();
+    });
+
     // ── Pulsing inner core (breathes life into the ball) ──
     const pulse = 0.5 + Math.sin(t * 1.15) * 0.5;
     const core = ctx.createRadialGradient(R, R, 0, R, R, R * 0.46);
@@ -161,6 +199,23 @@ function OrbCanvas(canvas, size, isMain) {
     vign.addColorStop(1,    `hsla(${hue - 24}, 80%, 2%, 0.72)`);
     ctx.fillStyle = vign;
     ctx.fillRect(0, 0, R * 2, R * 2);
+
+    // ── Inner energy rings ──
+    if (isMain) {
+      const rp = 0.5 + Math.sin(t * 0.62) * 0.5;
+      ctx.save();
+      ctx.beginPath();
+      ctx.arc(R, R, R * (0.46 + Math.sin(t * 0.38) * 0.04), 0, Math.PI * 2);
+      ctx.strokeStyle = `hsla(${hue + 22}, 100%, 84%, ${0.09 + rp * 0.08})`;
+      ctx.lineWidth = dpr * 1.3;
+      ctx.stroke();
+      ctx.beginPath();
+      ctx.arc(R, R, R * (0.64 + Math.sin(t * 0.27 + 1.2) * 0.035), 0, Math.PI * 2);
+      ctx.strokeStyle = `hsla(${hue - 18}, 90%, 72%, ${0.05 + rp * 0.04})`;
+      ctx.lineWidth = dpr * 0.7;
+      ctx.stroke();
+      ctx.restore();
+    }
 
     // ── Glass sheen (environment reflection, upper-right) ──
     const sheen = ctx.createRadialGradient(R * 1.18, R * 0.72, R * 0.55, R, R, R * 0.90);
