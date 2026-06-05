@@ -132,21 +132,31 @@ async function initDb() {
 initDb();
 
 // ─── DB Write helpers ──────────────────────────────────────────────
+const USER_SQL = `INSERT INTO users
+  (user_id, daily_count, last_reset, premium_until, total_asked, last_seen, free_bonus, referred_by, username, first_name)
+  VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)
+  ON CONFLICT (user_id) DO UPDATE SET
+    daily_count=$2, last_reset=$3, premium_until=$4,
+    total_asked=$5, last_seen=$6, free_bonus=$7, referred_by=$8,
+    username=COALESCE($9, users.username),
+    first_name=COALESCE($10, users.first_name)`;
+
+function userParams(id, u) {
+  return [id, u.dailyCount, u.lastReset, u.premiumUntil || null,
+          u.totalAsked, u.lastSeen || null, u.freeBonus, u.referredBy || null,
+          u.username || null, u.firstName || null];
+}
+
 function dbSaveUser(id, u) {
   if (!dbReady || !pool) return;
-  pool.query(
-    `INSERT INTO users
-       (user_id, daily_count, last_reset, premium_until, total_asked, last_seen, free_bonus, referred_by, username, first_name)
-     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)
-     ON CONFLICT (user_id) DO UPDATE SET
-       daily_count=$2, last_reset=$3, premium_until=$4,
-       total_asked=$5, last_seen=$6, free_bonus=$7, referred_by=$8,
-       username=COALESCE($9, users.username),
-       first_name=COALESCE($10, users.first_name)`,
-    [id, u.dailyCount, u.lastReset, u.premiumUntil || null,
-     u.totalAsked, u.lastSeen || null, u.freeBonus, u.referredBy || null,
-     u.username || null, u.firstName || null]
-  ).catch(e => console.error('[DB] saveUser:', e.message));
+  pool.query(USER_SQL, userParams(id, u))
+    .catch(() => {
+      // Retry once after 3s — protects premium writes from transient DB errors
+      setTimeout(() => {
+        pool.query(USER_SQL, userParams(id, u))
+          .catch(e => console.error('[DB] saveUser retry failed:', e.message));
+      }, 3000);
+    });
 }
 
 // Queue for failed question writes — retried every 30s
