@@ -299,10 +299,19 @@ if (BOT_TOKEN) {
   bot.onText(/\/help/, async (msg) => {
     try {
       await bot.sendMessage(msg.chat.id,
-        `🔮 *Оракул Долі*\n\n/start — Відкрити бота\n/ask [питання] — Швидке питання\n/premium — Купити Преміум ⭐\n/gift — Подарувати Преміум другу 🎁\n/ref — Реферальне посилання (+3 питання)\n/help — Довідка\n\n🆓 Безкоштовно: 2 питання / день\n⭐ Преміум від 100 ★`,
+        `🔮 *Оракул Долі*\n\n/start — Відкрити бота\n/ask [питання] — Швидке питання\n/premium — Купити Преміум ⭐\n/gift — Подарувати Преміум другу 🎁\n/ref — Реферальне посилання (+3 питання)\n/terms — Умови використання\n/help — Довідка\n\n🆓 Безкоштовно: 2 питання / день\n⭐ Преміум від 100 ★`,
         { parse_mode: 'Markdown', reply_markup: { inline_keyboard: [[{ text: '🔮 Відкрити Оракул', web_app: { url: WEBAPP_URL } }]] } }
       );
     } catch (e) { console.error('[/help]', e.message); }
+  });
+
+  bot.onText(/\/terms|\/privacy/, async (msg) => {
+    try {
+      await bot.sendMessage(msg.chat.id,
+        `📄 *Правові документи Оракул Долі*\n\n[Умови використання](${WEBAPP_URL}/terms.html)\n[Політика конфіденційності](${WEBAPP_URL}/terms.html#privacy)`,
+        { parse_mode: 'Markdown', disable_web_page_preview: true }
+      );
+    } catch (e) { console.error('[/terms]', e.message); }
   });
 
   // /gift — gifting flow

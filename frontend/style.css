@@ -1026,6 +1026,18 @@ body.keyboard-open .char-counter { display: none; }
 }
 .paywall-legal a:hover { color: var(--purple-l); }
 
+.home-legal {
+  text-align: center;
+  font-size: 11px;
+  color: rgba(255,255,255,0.22);
+  padding: 16px 0 24px;
+}
+.home-legal a {
+  color: rgba(139,61,255,0.5);
+  text-decoration: none;
+}
+.home-legal a:hover { color: var(--purple-l); }
+
 /* ─── Loading Overlay ───────────────────────────────────────── */
 .loading-overlay {
   position: fixed;
