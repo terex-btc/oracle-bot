@@ -615,6 +615,69 @@ document.querySelector('.oracle-header')?.addEventListener('click', () => {
 
 document.querySelector('.orb-section')?.addEventListener('click', () => input.blur());
 
+// ─── Oracle Sound (Web Audio API, no files needed) ──────────────
+let _ac = null;
+function playOracleSound(color) {
+  try {
+    if (!_ac) _ac = new (window.AudioContext || window.webkitAudioContext)();
+    if (_ac.state === 'suspended') _ac.resume();
+    const ac  = _ac;
+    const now = ac.currentTime;
+    const cfg = {
+      yes:   { freqs: [261.63, 329.63, 392.00, 523.25], drift: 1.006, decay: 2.2, vol: 0.15 },
+      no:    { freqs: [293.66, 349.23, 415.30],          drift: 0.982, decay: 1.8, vol: 0.13 },
+      maybe: { freqs: [349.23, 440.00, 466.16],          drift: 1.000, decay: 2.4, vol: 0.12, vib: true },
+    }[color] || { freqs: [349.23, 440.00], drift: 1.0, decay: 2.0, vol: 0.12 };
+
+    const master = ac.createGain();
+    master.gain.setValueAtTime(0.001, now);
+    master.gain.linearRampToValueAtTime(cfg.vol, now + 0.06);
+    master.gain.exponentialRampToValueAtTime(0.001, now + cfg.decay);
+    master.connect(ac.destination);
+
+    cfg.freqs.forEach((f, i) => {
+      const osc = ac.createOscillator();
+      osc.type = 'sine';
+      osc.frequency.setValueAtTime(f, now);
+      osc.frequency.linearRampToValueAtTime(f * cfg.drift, now + cfg.decay);
+      if (cfg.vib) {
+        const vib = ac.createOscillator();
+        vib.frequency.value = 5;
+        const vg = ac.createGain();
+        vg.gain.value = 5;
+        vib.connect(vg);
+        vg.connect(osc.frequency);
+        vib.start(now);
+        vib.stop(now + cfg.decay + 0.3);
+      }
+      const g = ac.createGain();
+      g.gain.setValueAtTime(1 / (i + 1.5), now + i * 0.05);
+      g.gain.exponentialRampToValueAtTime(0.001, now + cfg.decay);
+      osc.connect(g); g.connect(master);
+      osc.start(now + i * 0.05);
+      osc.stop(now + cfg.decay + 0.3);
+    });
+    const sh = ac.createOscillator();
+    sh.type = 'sine';
+    sh.frequency.value = cfg.freqs[0] * 4;
+    const sg = ac.createGain();
+    sg.gain.setValueAtTime(0.04, now);
+    sg.gain.exponentialRampToValueAtTime(0.001, now + 0.7);
+    sh.connect(sg); sg.connect(master);
+    sh.start(now); sh.stop(now + 0.8);
+  } catch(e) {}
+}
+
+// ─── Orb burst flash ─────────────────────────────────────────────
+function triggerOrbBurst(color) {
+  const el = document.getElementById('orb-flash');
+  if (!el) return;
+  el.className = `burst-${color}`;
+  void el.offsetWidth;
+  el.classList.add('active');
+  setTimeout(() => { el.className = ''; }, 700);
+}
+
 // ─── Ask ────────────────────────────────────────────────────────
 async function askOracle() {
   const question = input.value.trim();
@@ -651,6 +714,11 @@ async function askOracle() {
     if (!res.ok) throw new Error('server error');
     const data = await res.json();
     if (data.status) { userStatus = data.status; updateCounter(); }
+    showLoading(false);
+    orbWrap?.classList.remove('asking');
+    playOracleSound(data.answer.color);
+    triggerOrbBurst(data.answer.color);
+    await new Promise(r => setTimeout(r, 230));
     showAnswer(question, data.answer);
   } catch {
     orbStatus.textContent = LANGS[currentLang].orbError;
