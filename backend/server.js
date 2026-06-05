@@ -46,18 +46,33 @@ app.use(compression());
 app.use(cors({ origin: ['https://web.telegram.org', 'https://t.me', WEBAPP_URL] }));
 app.use(express.json({ limit: '16kb' }));
 
-// ─── In-memory rate limit for /api/ask ───────────────────────────────────────
-const askLastTs = new Map();
+// ─── Sliding-window rate limiter ─────────────────────────────────────────────
+const _rl = new Map();
+function makeRL(max, windowMs) {
+  return function(key) {
+    const now = Date.now(), cutoff = now - windowMs;
+    let a = _rl.get(key);
+    if (!a) { a = []; _rl.set(key, a); }
+    while (a.length && a[0] < cutoff) a.shift();
+    if (a.length >= max) return false;
+    a.push(now);
+    if (_rl.size > 20000) {
+      for (const [k, v] of _rl) if (!v.length || v[v.length - 1] < cutoff) _rl.delete(k);
+    }
+    return true;
+  };
+}
+const rl = {
+  askFast: makeRL(1,   1_500),  // 1 per 1.5s  — double-tap guard
+  ask:     makeRL(30,  60_000), // 30 per min   — sustained spam
+  invoice: makeRL(5,   60_000), // 5 per min    — invoice spam
+  event:   makeRL(120, 60_000), // 120 per min  — analytics spam (silently drop)
+};
+
 function rateLimit(req, res, next) {
-  const uid = req.body?.userId || req.ip;
-  const now = Date.now();
-  const last = askLastTs.get(uid) || 0;
-  if (now - last < 1500) return res.status(429).json({ error: 'Too fast' });
-  askLastTs.set(uid, now);
-  if (askLastTs.size > 5000) {
-    const cutoff = now - 60_000;
-    for (const [k, v] of askLastTs) if (v < cutoff) askLastTs.delete(k);
-  }
+  const uid = String(req.body?.userId || req.ip || '?');
+  if (!rl.askFast(uid)) return res.status(429).json({ error: 'Too fast' });
+  if (!rl.ask(uid))     return res.status(429).json({ error: 'Rate limit' });
   next();
 }
 
@@ -623,6 +638,7 @@ async function sendGiftInvoice(chatId, userId, plan) {
   const invoiceData = {
     chat_id: chatId, title: p.title, description: p.desc,
     payload: `oracle_${plan}_${userId}`, currency: 'XTR',
+    provider_token: '',
     prices: [{ label: p.title, amount: p.stars }],
   };
   try { await tgApi('sendInvoice', { ...invoiceData, photo_url: WEBAPP_URL + '/preview.jpg' }); }
@@ -632,12 +648,13 @@ async function sendGiftInvoice(chatId, userId, plan) {
 async function sendPremiumInvoice(chatId, userId, plan = 'month') {
   const p = PLAN_CONFIG[plan] || PLAN_CONFIG.month;
   const invoiceData = {
-    chat_id:  chatId,
-    title:    p.title,
-    description: p.desc,
-    payload:  `oracle_${plan}_${userId || chatId}`,
-    currency: 'XTR',
-    prices:   [{ label: p.title, amount: p.stars }],
+    chat_id:        chatId,
+    title:          p.title,
+    description:    p.desc,
+    payload:        `oracle_${plan}_${userId || chatId}`,
+    currency:       'XTR',
+    provider_token: '',
+    prices:         [{ label: p.title, amount: p.stars }],
   };
   try {
     await tgApi('sendInvoice', { ...invoiceData, photo_url: WEBAPP_URL + '/preview.jpg' });
@@ -670,17 +687,19 @@ api.get('/user/:userId/status', (req, res) => {
 
 api.post('/user/:userId/invoice', async (req, res) => {
   const { userId } = req.params;
+  if (!rl.invoice(userId)) return res.status(429).json({ error: 'Too many requests' });
   const plan = req.body?.plan || 'month';
   const isPack = plan.startsWith('pack');
   const p = isPack ? PACK_CONFIG[plan] : (PLAN_CONFIG[plan] || PLAN_CONFIG.month);
   if (!p) return res.status(400).json({ error: 'Unknown plan' });
   try {
     const result = await tgApi('createInvoiceLink', {
-      title:       p.title,
-      description: p.desc,
-      payload:     `oracle_${plan}_${userId}`,
-      currency:    'XTR',
-      prices:      [{ label: p.title, amount: p.stars }],
+      title:          p.title,
+      description:    p.desc,
+      payload:        `oracle_${plan}_${userId}`,
+      currency:       'XTR',
+      provider_token: '',
+      prices:         [{ label: p.title, amount: p.stars }],
     });
     if (result.ok) {
       res.json({ url: result.result, plan, stars: p.stars, questions: p.questions, days: p.days });
@@ -700,7 +719,7 @@ api.post('/user/sync', (req, res) => {
 
 api.post('/event', (req, res) => {
   const { userId, event, variant } = req.body || {};
-  if (event) logEvent(userId || 'guest', event, variant || null);
+  if (event && rl.event(req.ip || '?')) logEvent(userId || 'guest', event, variant || null);
   res.json({ ok: true });
 });
 
