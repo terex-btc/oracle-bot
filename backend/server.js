@@ -735,12 +735,23 @@ api.get('/user/:userId/history', async (req, res) => {
 });
 
 api.post('/ask', rateLimit, (req, res) => {
-  const { question, userId, category, username, firstName } = req.body;
-  if (userId && userId !== 'guest' && (username || firstName)) {
+  const raw = req.body;
+  // Sanitize userId — null/undefined/'null'/'undefined' → guest
+  const rawId = raw?.userId;
+  const userId = (rawId && rawId !== 'null' && rawId !== 'undefined')
+    ? String(rawId).trim().slice(0, 64)
+    : 'guest';
+  const { category, username, firstName } = raw;
+  const question = raw?.question;
+
+  if (userId !== 'guest' && (username || firstName)) {
     setUserInfo(userId, { username, firstName });
   }
   if (!question || !question.trim()) {
     return res.status(400).json({ error: 'Вопрос не может быть пустым' });
+  }
+  if (question.trim().length > 500) {
+    return res.status(400).json({ error: 'Питання занадто довге (макс 500 символів)' });
   }
 
   if (userId && userId !== 'guest') {

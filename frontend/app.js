@@ -1,5 +1,11 @@
 /* ─── Oracle Bot — Cosmic Edition ───────────────────────────── */
 
+function escapeHtml(s) {
+  return String(s || '').replace(/[&<>"']/g, c =>
+    ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c])
+  );
+}
+
 const tg = window.Telegram?.WebApp;
 
 function applyTopInset() {
@@ -934,7 +940,7 @@ async function loadHistory() {
             <span class="history-item-verdict">${label}</span>
             <span class="history-item-date">${date}</span>
           </div>
-          <div class="history-item-q">${q.question || ''}</div>
+          <div class="history-item-q">${escapeHtml(q.question)}</div>
         </div>`;
     }).join('');
   } catch {
