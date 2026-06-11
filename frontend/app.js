@@ -688,6 +688,14 @@ const LANGS = {
     paywallSubB:      'Оракул знает — открой доступ',
     btnComeBack:      '🌙 Вернуться завтра (бесплатно)',
     langBtn:          '🌐 UA',
+    catAll:           'Все',
+    catLove:          'Любовь',
+    catMoney:         'Деньги',
+    catWork:          'Карьера',
+    catLocked:        '🔒 Категории доступны в Премиум',
+    streakToast:      (n, b) => `🔥 ${n} дней подряд! +${b} бонусных вопроса`,
+    offerTitle:       'Только сейчас: 7 дней за полцены!',
+    offerBtn:         'Забрать',
   },
   ua: {
     badge:            '🔮 ОРАКУЛ ДОЛІ',
@@ -736,6 +744,14 @@ const LANGS = {
     paywallSubB:      'Оракул знає — відкрий доступ',
     btnComeBack:      '🌙 Повернутись завтра (безкоштовно)',
     langBtn:          '🌐 RU',
+    catAll:           'Все',
+    catLove:          'Кохання',
+    catMoney:         'Гроші',
+    catWork:          'Кар\'єра',
+    catLocked:        '🔒 Категорії доступні в Преміум',
+    streakToast:      (n, b) => `🔥 ${n} днів поспіль! +${b} бонусних питання`,
+    offerTitle:       'Лише зараз: 7 днів за пів ціни!',
+    offerBtn:         'Забрати',
   },
 };
 let currentLang = localStorage.getItem('oracle_lang') || 'ru';
@@ -808,6 +824,15 @@ function applyLang() {
   const hb = document.getElementById('btn-history-back');
   if (hb) hb.textContent = L.historyBack;
 
+  [['cat-all-label', L.catAll], ['cat-love-label', L.catLove], ['cat-money-label', L.catMoney], ['cat-work-label', L.catWork]].forEach(([id, t]) => {
+    const el = document.getElementById(id);
+    if (el) el.textContent = t;
+  });
+  const ot = document.getElementById('offer-title');
+  if (ot) ot.textContent = L.offerTitle;
+  const ob = document.getElementById('offer-btn');
+  if (ob && !ob.disabled) ob.textContent = L.offerBtn;
+
   updateCounter();
 }
 
@@ -871,16 +896,63 @@ function updateCounter() {
   const btn = document.getElementById('premium-btn');
   if (!el) return;
   const L = LANGS[currentLang];
+  const streakSuffix = (userStatus.streak ?? 0) >= 2 ? ` · 🔥${userStatus.streak}` : '';
   if (userStatus.isPremium) {
-    el.textContent = L.counterPremium;
+    el.textContent = L.counterPremium + streakSuffix;
     el.className = 'question-counter premium';
     if (btn) { btn.textContent = L.premiumActive; btn.classList.add('is-premium'); }
   } else if (userStatus.remaining !== null) {
     const left = userStatus.remaining ?? 2;
-    el.textContent = left > 0 ? L.counterLeft(left) : L.counterEmpty;
+    el.textContent = (left > 0 ? L.counterLeft(left) : L.counterEmpty) + streakSuffix;
     el.className = `question-counter${left <= 1 ? ' low' : ''}`;
     if (btn) { btn.textContent = L.premiumDefault; btn.classList.remove('is-premium'); }
   }
+  updateCatChips();
+}
+
+// ─── Категорії питань ───────────────────────────────────────────
+let selectedCat = 'general';
+
+function updateCatChips() {
+  document.querySelectorAll('.cat-chip').forEach(chip => {
+    const locked = chip.dataset.cat !== 'general' && !userStatus.isPremium;
+    chip.classList.toggle('locked', locked);
+  });
+  if (!userStatus.isPremium && selectedCat !== 'general') {
+    selectedCat = 'general';
+    document.querySelectorAll('.cat-chip').forEach(c => c.classList.toggle('active', c.dataset.cat === 'general'));
+  }
+}
+
+document.querySelectorAll('.cat-chip').forEach(chip => {
+  chip.addEventListener('click', () => {
+    const cat = chip.dataset.cat;
+    if (cat !== 'general' && !userStatus.isPremium) {
+      showToast(LANGS[currentLang].catLocked);
+      if (tg?.HapticFeedback) tg.HapticFeedback.notificationOccurred('warning');
+      showPaywall();
+      return;
+    }
+    selectedCat = cat;
+    document.querySelectorAll('.cat-chip').forEach(c => c.classList.toggle('active', c === chip));
+    if (tg?.HapticFeedback) tg.HapticFeedback.selectionChanged();
+  });
+});
+
+// ─── Toast ──────────────────────────────────────────────────────
+let toastTimer = null;
+function showToast(text) {
+  let el = document.getElementById('oracle-toast');
+  if (!el) {
+    el = document.createElement('div');
+    el.id = 'oracle-toast';
+    el.className = 'oracle-toast';
+    document.body.appendChild(el);
+  }
+  el.textContent = text;
+  el.classList.add('show');
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => el.classList.remove('show'), 3500);
 }
 
 // ─── Screen Switch ──────────────────────────────────────────────
@@ -1032,6 +1104,7 @@ async function askOracle() {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         question, userId,
+        category:  selectedCat,
         username:  tgUsername  || undefined,
         firstName: tgFirstName || undefined,
       })
@@ -1044,7 +1117,15 @@ async function askOracle() {
     }
 
     const res = await apiPromise;
-    if (res.status === 403) { showPaywall(); return; }
+    if (res.status === 403) {
+      // Сервер міг запустити оффер першої покупки — забираємо статус із відповіді
+      try {
+        const body = await res.json();
+        if (body.status) userStatus = body.status;
+      } catch {}
+      showPaywall();
+      return;
+    }
     if (!res.ok) throw new Error('server error');
     const data = await res.json();
     if (data.status) { userStatus = data.status; updateCounter(); }
@@ -1054,6 +1135,9 @@ async function askOracle() {
     triggerOrbBurst(data.answer.color);
     await new Promise(r => setTimeout(r, 230));
     showAnswer(question, data.answer);
+    if (data.streak?.reward) {
+      setTimeout(() => showToast(LANGS[currentLang].streakToast(data.streak.streak, data.streak.reward)), 1200);
+    }
   } catch {
     orbStatus.textContent = LANGS[currentLang].orbError;
     setTimeout(() => { orbStatus.textContent = LANGS[currentLang].orbDefault; }, 3000);
@@ -1066,9 +1150,34 @@ async function askOracle() {
 }
 
 // ─── Paywall ────────────────────────────────────────────────────
+let offerInterval = null;
+
+function renderOffer() {
+  const banner = document.getElementById('offer-banner');
+  if (!banner) return;
+  clearInterval(offerInterval);
+  const offer = userStatus.offer;
+  if (!offer || offer.until <= Date.now()) { banner.style.display = 'none'; return; }
+  banner.style.display = 'flex';
+  const timerEl = document.getElementById('offer-timer');
+  const tick = () => {
+    const left = offer.until - Date.now();
+    if (left <= 0 || userStatus.isPremium) { banner.style.display = 'none'; clearInterval(offerInterval); return; }
+    const h = Math.floor(left / 3600000), m = Math.floor(left / 60000) % 60, s = Math.floor(left / 1000) % 60;
+    if (timerEl) timerEl.textContent = `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
+  };
+  tick();
+  offerInterval = setInterval(tick, 1000);
+}
+
+document.getElementById('offer-btn')?.addEventListener('click', function() {
+  buyPremiumFlow(this, 'offerweek');
+});
+
 function showPaywall() {
   showScreen('screen-paywall');
   applyABVariant();
+  renderOffer();
   trackEvent('paywall_shown');
   if (tg?.HapticFeedback) tg.HapticFeedback.notificationOccurred('error');
 }

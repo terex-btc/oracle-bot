@@ -8,15 +8,17 @@ const TelegramBot  = require('node-telegram-bot-api');
 const { getOracleAnswer } = require('./config/oracleAnswers');
 let getStatus, increment, setUserInfo, activatePremium, revokePremium, addBonus, applyReferral, logQuestion,
     getUserQuestions, getStats, getUsers, getQuestions,
-    createGift, redeemGift, logEvent, getFunnelStats, getABVariant;
+    createGift, redeemGift, logEvent, getFunnelStats, getABVariant,
+    setSource, markPaid, startOffer, logPayment, getSourceStats;
 try {
   ({ getStatus, increment, setUserInfo, activatePremium, revokePremium, addBonus, applyReferral,
      logQuestion, getUserQuestions, getStats, getUsers, getQuestions,
-     createGift, redeemGift, logEvent, getFunnelStats, getABVariant } = require('./services/userService'));
+     createGift, redeemGift, logEvent, getFunnelStats, getABVariant,
+     setSource, markPaid, startOffer, logPayment, getSourceStats } = require('./services/userService'));
 } catch (e) {
   console.error('[userService] Load error:', e.message);
   getStatus        = () => ({ canAsk: true, remaining: 2, isPremium: false });
-  increment        = () => {};
+  increment        = () => ({ streak: 0, reward: 0 });
   setUserInfo      = () => {};
   activatePremium  = () => new Date().toISOString();
   revokePremium    = () => true;
@@ -32,6 +34,11 @@ try {
   logEvent         = () => {};
   getFunnelStats   = () => ({ counts: {}, ab: {} });
   getABVariant     = () => 'A';
+  setSource        = () => false;
+  markPaid         = () => {};
+  startOffer       = () => null;
+  logPayment       = () => {};
+  getSourceStats   = () => [];
 }
 
 const app          = express();
@@ -137,6 +144,16 @@ if (BOT_TOKEN) {
     const userId  = msg.from?.id;
     const name    = msg.from?.first_name || 'Мандрівнику';
     const param   = (match[1] || '').trim();
+
+    // Джерело трафіку (first touch): ?start=src_назва_каналу
+    if (userId && param.startsWith('src_')) {
+      const src = param.slice(4).replace(/[^\w-]/g, '').slice(0, 32);
+      if (src) setSource(userId, src);
+    } else if (userId && param.startsWith('ref_')) {
+      setSource(userId, 'referral');
+    } else if (userId && param.startsWith('gift_')) {
+      setSource(userId, 'gift');
+    }
 
     // Подарунок: ?start=gift_CODE
     if (userId && param.startsWith('gift_')) {
@@ -409,6 +426,10 @@ if (BOT_TOKEN) {
       if (userId) setUserInfo(userId, { username: msg.from?.username, firstName: msg.from?.first_name });
       if (!payload?.startsWith('oracle_')) return;
 
+      // Лог платежу для статистики джерел + вимкнення офферу першої покупки
+      logPayment(userId, stars, payload);
+      markPaid(userId);
+
       // ── Подарунки: oracle_gift7_UID / oracle_gift30_UID ──
       if (payload.startsWith('oracle_gift')) {
         const giftPlanKey = Object.keys(GIFT_PLANS).find(k => payload.startsWith(`oracle_${k}_`));
@@ -446,12 +467,15 @@ if (BOT_TOKEN) {
         return;
       }
 
-      // ── Преміум плани: oracle_week_UID / oracle_month_UID / oracle_lifetime_UID ──
+      // ── Преміум плани: oracle_week_UID / oracle_month_UID / oracle_lifetime_UID / oracle_offerweek_UID ──
+      const isOffer = payload.startsWith('oracle_offerweek_');
       let days = 30;
       if (payload.startsWith('oracle_week_'))     days = 7;
+      if (isOffer)                                days = 7;
       if (payload.startsWith('oracle_lifetime_')) days = 36500;
 
-      const expectedPlan = Object.values(PLAN_CONFIG).find(p => p.days === days);
+      // Оффер має власну ціну (50★), тому перевірку зірок по PLAN_CONFIG пропускаємо
+      const expectedPlan = isOffer ? null : Object.values(PLAN_CONFIG).find(p => p.days === days);
       if (expectedPlan && Math.abs(stars - expectedPlan.stars) > 1) {
         console.warn(`[Premium] stars mismatch: expected=${expectedPlan.stars} got=${stars} userId=${userId}`);
       }
@@ -623,6 +647,9 @@ const PLAN_CONFIG = {
   lifetime: { days: 36500, stars: 2500, title: '⭐ Oracle Premium — Назавжди', desc: 'Безлімітні питання Оракулу назавжди!' },
 };
 
+// Оффер першої покупки: 7 днів за пів ціни, діє 24 год після першого пейволу
+const OFFER_PLAN = { days: 7, stars: 50, title: '🎁 Oracle Premium — 7 днів (−50%)', desc: 'Спецпропозиція: тиждень безліміту за пів ціни!' };
+
 const PACK_CONFIG = {
   pack5:  { questions: 5,  stars: 30, title: '🔮 Пакет +5 питань',  desc: '5 додаткових питань Оракулу — без строку дії!' },
   pack20: { questions: 20, stars: 80, title: '🔮 Пакет +20 питань', desc: '20 додаткових питань Оракулу — без строку дії!' },
@@ -691,7 +718,12 @@ api.post('/user/:userId/invoice', async (req, res) => {
   if (!rl.invoice(userId)) return res.status(429).json({ error: 'Too many requests' });
   const plan = req.body?.plan || 'month';
   const isPack = plan.startsWith('pack');
-  const p = isPack ? PACK_CONFIG[plan] : (PLAN_CONFIG[plan] || PLAN_CONFIG.month);
+  let p = isPack ? PACK_CONFIG[plan] : (PLAN_CONFIG[plan] || PLAN_CONFIG.month);
+  if (plan === 'offerweek') {
+    const st = getStatus(userId);
+    if (!st.offer) return res.status(400).json({ error: 'Пропозиція вже не активна' });
+    p = OFFER_PLAN;
+  }
   if (!p) return res.status(400).json({ error: 'Unknown plan' });
   try {
     const result = await tgApi('createInvoiceLink', {
@@ -735,6 +767,35 @@ api.get('/user/:userId/history', async (req, res) => {
   }
 });
 
+// Містичні доповнення відповіді за преміум-категоріями
+const CAT_LINES = {
+  love: {
+    ru: ['💕 Сердце уже знает ответ — доверься ему.', '💕 В делах любви звёзды сегодня особенно внимательны к тебе.', '💕 Чувства не ошибаются — ошибаются ожидания.'],
+    ua: ['💕 Серце вже знає відповідь — довірся йому.', '💕 У справах кохання зорі сьогодні особливо уважні до тебе.', '💕 Почуття не помиляються — помиляються очікування.'],
+  },
+  money: {
+    ru: ['💰 Денежные потоки чувствуют твою решимость.', '💰 Богатство приходит к тем, кто слышит знаки.', '💰 Вселенная считает быстрее любого банка.'],
+    ua: ['💰 Грошові потоки відчувають твою рішучість.', '💰 Багатство приходить до тих, хто чує знаки.', '💰 Всесвіт рахує швидше за будь-який банк.'],
+  },
+  work: {
+    ru: ['💼 Твой путь к успеху уже начертан — иди по нему.', '💼 Карьерные звёзды складываются в твою пользу.', '💼 Признание ближе, чем кажется.'],
+    ua: ['💼 Твій шлях до успіху вже накреслено — йди ним.', '💼 Кар\'єрні зорі складаються на твою користь.', '💼 Визнання ближче, ніж здається.'],
+  },
+};
+
+function withCategory(answer, cat) {
+  const lines = CAT_LINES[cat];
+  if (!lines) return answer;
+  const i = Math.floor(Math.random() * lines.ru.length);
+  return {
+    ...answer,
+    message: `${answer.message}\n\n${lines.ru[i]}`,
+    message_ua: `${answer.message_ua}\n\n${lines.ua[i]}`,
+  };
+}
+
+const CATEGORIES = ['general', 'love', 'money', 'work'];
+
 api.post('/ask', rateLimit, (req, res) => {
   const raw = req.body;
   // Sanitize userId — null/undefined/'null'/'undefined' → guest
@@ -742,7 +803,8 @@ api.post('/ask', rateLimit, (req, res) => {
   const userId = (rawId && rawId !== 'null' && rawId !== 'undefined')
     ? String(rawId).trim().slice(0, 64)
     : 'guest';
-  const { category, username, firstName } = raw;
+  const { username, firstName } = raw;
+  let category = CATEGORIES.includes(raw?.category) ? raw.category : 'general';
   const question = raw?.question;
 
   if (userId !== 'guest' && (username || firstName)) {
@@ -757,8 +819,12 @@ api.post('/ask', rateLimit, (req, res) => {
 
   if (userId && userId !== 'guest') {
     try {
-      const status = getStatus(userId);
+      let status = getStatus(userId);
+      // Преміум-категорії доступні лише з підпискою — тихий даунгрейд
+      if (category !== 'general' && !status.isPremium) category = 'general';
       if (!status.canAsk) {
+        // Перший пейвол запускає 24-годинний оффер першої покупки
+        if (startOffer(userId)) status = getStatus(userId);
         // Надіслати нотифікацію в бот — один раз на день
         if (bot) {
           const notifKey = `${userId}_${new Date().toISOString().slice(0, 10)}`;
@@ -774,11 +840,18 @@ api.post('/ask', rateLimit, (req, res) => {
         }
         return res.status(403).json({ error: 'limit', message: 'Лимит вопросов исчерпан', status });
       }
-      increment(userId);
-      const answer = getOracleAnswer();
+      const streakInfo = increment(userId);
+      const answer = withCategory(getOracleAnswer(), category);
       logQuestion(userId, question.trim(), answer, category);
       emitQuestion();
-      return res.json({ question: question.trim(), answer, status: getStatus(userId) });
+      // Кожен 7-й день стріку — бонус, повідомляємо в бот
+      if (streakInfo.reward && bot) {
+        bot.sendMessage(userId,
+          `🔥 *${streakInfo.streak} днів поспіль із Оракулом!*\n\n🎁 Тримай нагороду: *+${streakInfo.reward} бонусних питання*\n\n_Повертайся завтра — серія продовжується!_`,
+          { parse_mode: 'Markdown' }
+        ).catch(() => {});
+      }
+      return res.json({ question: question.trim(), answer, status: getStatus(userId), streak: streakInfo });
     } catch (e) {
       console.error('[ask/userService]', e.message || e);
       const answer = getOracleAnswer();
@@ -900,6 +973,11 @@ adminApi.post('/user/:userId/bonus', (req, res) => {
     const freeBonus = addBonus(req.params.userId, amount);
     res.json({ ok: true, userId: req.params.userId, amount, freeBonus });
   } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+adminApi.get('/sources', (req, res) => {
+  try { res.json(getSourceStats()); }
+  catch (e) { res.status(500).json({ error: e.message }); }
 });
 
 adminApi.get('/funnel', (req, res) => {

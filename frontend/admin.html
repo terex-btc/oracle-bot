@@ -344,6 +344,17 @@ tr.clickable:hover td{background:rgba(139,61,255,.08)}
       </div>
     </div>
 
+    <!-- ══ Traffic sources ════════════════════════════════════════════════ -->
+    <div class="panel" id="sources-panel" style="margin-bottom:20px">
+      <div class="panel-hdr">
+        <div class="panel-hdr-top"><span class="panel-hdr-title">🚀 Джерела трафіку</span></div>
+        <div style="font-size:12px;color:var(--muted);margin-top:4px">Рекламне посилання: <code style="color:#c084fc">t.me/oracle_666bot?start=src_назва</code></div>
+      </div>
+      <div id="sources-body" style="padding:16px 20px">
+        <div style="color:var(--muted);font-size:13px">Завантаження...</div>
+      </div>
+    </div>
+
     <!-- ══ Broadcast ══════════════════════════════════════════════════════ -->
     <div class="bc-wrap">
       <div class="panel">
@@ -592,11 +603,12 @@ async function api(path) {
 
 async function refreshAll(manual = false) {
   if (manual) { cdSec = CD_MAX; updateFill(); }
-  const [stats, users, questions, funnel] = await Promise.all([
+  const [stats, users, questions, funnel, sources] = await Promise.all([
     api('stats'),
     api('users'),
     api('questions?limit=1000'),
     api('funnel'),
+    api('sources'),
   ]);
   if (!stats) return false;
 
@@ -610,6 +622,7 @@ async function refreshAll(manual = false) {
   renderQuestions();
   renderUsers();
   if (funnel) renderFunnel(funnel);
+  if (sources) renderSources(sources);
 
   const bcTarget = document.getElementById('bc-target');
   if (bcTarget) bcTarget.textContent = `Юзерів для розсилки: ${allU.length}`;
@@ -697,6 +710,41 @@ function renderFunnel(data) {
     html += `</div></div>`;
   }
 
+  el.innerHTML = html;
+}
+
+// ── Traffic sources ───────────────────────────────────────────────────
+function renderSources(list) {
+  const el = document.getElementById('sources-body');
+  if (!el) return;
+  if (!Array.isArray(list) || !list.length) {
+    el.innerHTML = '<div style="color:var(--muted);font-size:13px">Поки немає даних — додай ?start=src_назва до рекламних посилань</div>';
+    return;
+  }
+  const esc = s => String(s).replace(/[&<>"']/g, ch => ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[ch]));
+  const th = 'padding:8px 10px;font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;text-align:right;border-bottom:1px solid #1e1a35';
+  const td = 'padding:9px 10px;font-size:13px;color:#d4c8f0;text-align:right;border-bottom:1px solid #1e1a35';
+  let html = `<table style="width:100%;border-collapse:collapse">
+    <thead><tr>
+      <th style="${th};text-align:left">Джерело</th>
+      <th style="${th}">Юзерів</th>
+      <th style="${th}">Активні 7д</th>
+      <th style="${th}">Преміум</th>
+      <th style="${th}">Платників</th>
+      <th style="${th}">Зірок ★</th>
+    </tr></thead><tbody>`;
+  for (const s of list) {
+    const isOrganic = s.source === 'organic';
+    html += `<tr>
+      <td style="${td};text-align:left;font-weight:600;color:${isOrganic ? 'var(--muted)' : '#c084fc'}">${isOrganic ? '🌱 organic' : '📣 ' + esc(s.source)}</td>
+      <td style="${td};color:#fff;font-weight:700">${fmt(s.users)}</td>
+      <td style="${td}">${fmt(s.active7d)}</td>
+      <td style="${td}">${fmt(s.premium)}</td>
+      <td style="${td}">${fmt(s.payers)}</td>
+      <td style="${td};color:#f5c842;font-weight:700">${fmt(s.stars)}</td>
+    </tr>`;
+  }
+  html += '</tbody></table>';
   el.innerHTML = html;
 }
 

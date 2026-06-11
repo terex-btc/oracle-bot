@@ -6,6 +6,7 @@ const Q_MAX      = 1000;
 let pool;
 let memUsers    = {};
 let questionLog = [];
+let paymentLog  = [];
 let dbReady     = false;
 
 function today() {
@@ -37,13 +38,23 @@ async function initDb() {
         free_bonus   INTEGER NOT NULL DEFAULT 0,
         referred_by  TEXT,
         username     TEXT,
-        first_name   TEXT
+        first_name   TEXT,
+        source       TEXT,
+        streak       INTEGER NOT NULL DEFAULT 0,
+        last_streak_day TEXT,
+        has_paid     BOOLEAN NOT NULL DEFAULT FALSE,
+        offer_until  BIGINT
       )
     `);
 
-    // Migrate existing tables that may not have username/first_name columns
+    // Migrate existing tables that may not have newer columns
     await pool.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS username TEXT`);
     await pool.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS first_name TEXT`);
+    await pool.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS source TEXT`);
+    await pool.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS streak INTEGER NOT NULL DEFAULT 0`);
+    await pool.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS last_streak_day TEXT`);
+    await pool.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS has_paid BOOLEAN NOT NULL DEFAULT FALSE`);
+    await pool.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS offer_until BIGINT`);
 
     await pool.query(`
       CREATE TABLE IF NOT EXISTS questions (
@@ -83,6 +94,17 @@ async function initDb() {
     await pool.query(`CREATE INDEX IF NOT EXISTS idx_ev_ts  ON events(ts DESC)`);
     await pool.query(`CREATE INDEX IF NOT EXISTS idx_ev_evt ON events(event)`);
 
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS payments (
+        id      SERIAL PRIMARY KEY,
+        user_id TEXT,
+        stars   INTEGER,
+        payload TEXT,
+        ts      BIGINT
+      )
+    `);
+    await pool.query(`CREATE INDEX IF NOT EXISTS idx_pay_ts ON payments(ts DESC)`);
+
     const { rows: uRows } = await pool.query('SELECT * FROM users');
     for (const r of uRows) {
       memUsers[r.user_id] = {
@@ -95,6 +117,11 @@ async function initDb() {
         referredBy:   r.referred_by || null,
         username:     r.username    || null,
         firstName:    r.first_name  || null,
+        source:       r.source      || null,
+        streak:       r.streak      || 0,
+        lastStreakDay: r.last_streak_day || null,
+        hasPaid:      !!r.has_paid,
+        offerUntil:   r.offer_until ? Number(r.offer_until) : null,
       };
     }
 
@@ -116,6 +143,12 @@ async function initDb() {
       giftMap.set(r.code, { fromUserId: r.from_user, days: r.days, createdAt: Number(r.created_at) });
     }
 
+    // Load payments for source-revenue stats
+    const { rows: pRows } = await pool.query('SELECT * FROM payments ORDER BY ts DESC LIMIT 10000');
+    for (const r of pRows) {
+      paymentLog.push({ userId: r.user_id, stars: r.stars, payload: r.payload, ts: Number(r.ts) });
+    }
+
     dbReady = true;
     console.log(`[DB] PostgreSQL ready — ${uRows.length} users, ${qRows.length} questions, ${gRows.length} gifts`);
 
@@ -133,18 +166,22 @@ initDb();
 
 // ─── DB Write helpers ──────────────────────────────────────────────
 const USER_SQL = `INSERT INTO users
-  (user_id, daily_count, last_reset, premium_until, total_asked, last_seen, free_bonus, referred_by, username, first_name)
-  VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)
+  (user_id, daily_count, last_reset, premium_until, total_asked, last_seen, free_bonus, referred_by, username, first_name, source, streak, last_streak_day, has_paid, offer_until)
+  VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15)
   ON CONFLICT (user_id) DO UPDATE SET
     daily_count=$2, last_reset=$3, premium_until=$4,
     total_asked=$5, last_seen=$6, free_bonus=$7, referred_by=$8,
     username=COALESCE($9, users.username),
-    first_name=COALESCE($10, users.first_name)`;
+    first_name=COALESCE($10, users.first_name),
+    source=COALESCE($11, users.source),
+    streak=$12, last_streak_day=$13, has_paid=$14, offer_until=$15`;
 
 function userParams(id, u) {
   return [id, u.dailyCount, u.lastReset, u.premiumUntil || null,
           u.totalAsked, u.lastSeen || null, u.freeBonus, u.referredBy || null,
-          u.username || null, u.firstName || null];
+          u.username || null, u.firstName || null,
+          u.source || null, u.streak || 0, u.lastStreakDay || null,
+          !!u.hasPaid, u.offerUntil || null];
 }
 
 function dbSaveUser(id, u) {
@@ -204,7 +241,7 @@ function dbSaveQuestion(q) {
 function hydrate(userId) {
   const id = String(userId);
   if (!memUsers[id]) {
-    memUsers[id] = { dailyCount: 0, lastReset: today(), premiumUntil: null, totalAsked: 0, lastSeen: null, freeBonus: 0, referredBy: null, username: null, firstName: null };
+    memUsers[id] = { dailyCount: 0, lastReset: today(), premiumUntil: null, totalAsked: 0, lastSeen: null, freeBonus: 0, referredBy: null, username: null, firstName: null, source: null, streak: 0, lastStreakDay: null, hasPaid: false, offerUntil: null };
   }
   const u = memUsers[id];
   if (u.lastReset !== today()) { u.dailyCount = 0; u.lastReset = today(); }
@@ -213,14 +250,20 @@ function hydrate(userId) {
 }
 
 // ─── Public API ────────────────────────────────────────────────────
+const OFFER_TTL = 24 * 3_600_000; // первая покупка: 24 часа со скидкой
+
 function getStatus(userId) {
   const { u } = hydrate(userId);
   const isPremium = !!(u.premiumUntil && new Date(u.premiumUntil) > new Date());
-  if (isPremium) return { canAsk: true, remaining: null, isPremium: true, premiumUntil: u.premiumUntil, dailyCount: u.dailyCount, totalAsked: u.totalAsked || 0 };
+  const streak = u.streak || 0;
+  const offer = (!isPremium && !u.hasPaid && u.offerUntil && u.offerUntil > Date.now())
+    ? { until: u.offerUntil, plan: 'offerweek', stars: 50, days: 7 }
+    : null;
+  if (isPremium) return { canAsk: true, remaining: null, isPremium: true, premiumUntil: u.premiumUntil, dailyCount: u.dailyCount, totalAsked: u.totalAsked || 0, streak };
   const dailyLeft = Math.max(0, FREE_LIMIT - u.dailyCount);
   const bonusLeft = u.freeBonus || 0;
   const remaining = dailyLeft + bonusLeft;
-  return { canAsk: remaining > 0, remaining, dailyLeft, bonusLeft, isPremium: false, premiumUntil: null, dailyCount: u.dailyCount, limit: FREE_LIMIT, totalAsked: u.totalAsked || 0 };
+  return { canAsk: remaining > 0, remaining, dailyLeft, bonusLeft, isPremium: false, premiumUntil: null, dailyCount: u.dailyCount, limit: FREE_LIMIT, totalAsked: u.totalAsked || 0, streak, offer };
 }
 
 function increment(userId) {
@@ -230,7 +273,50 @@ function increment(userId) {
   else                               u.dailyCount++;
   u.totalAsked = (u.totalAsked || 0) + 1;
   u.lastSeen   = Date.now();
+
+  // Стрик: серия дней подряд с хотя бы одним вопросом, каждый 7-й день → +3 бонуса
+  const t = today();
+  let reward = 0;
+  if (u.lastStreakDay !== t) {
+    const yesterday = new Date(Date.now() - 86_400_000).toISOString().slice(0, 10);
+    u.streak = (u.lastStreakDay === yesterday) ? (u.streak || 0) + 1 : 1;
+    u.lastStreakDay = t;
+    if (u.streak % 7 === 0) {
+      u.freeBonus = (u.freeBonus || 0) + 3;
+      reward = 3;
+    }
+  }
+
   dbSaveUser(id, u);
+  return { streak: u.streak || 0, reward };
+}
+
+function setSource(userId, source) {
+  try {
+    const { u, id } = hydrate(userId);
+    if (u.source) return false; // first touch only
+    u.source = String(source).slice(0, 32);
+    dbSaveUser(id, u);
+    return true;
+  } catch { return false; }
+}
+
+function markPaid(userId) {
+  try {
+    const { u, id } = hydrate(userId);
+    u.hasPaid = true;
+    dbSaveUser(id, u);
+  } catch {}
+}
+
+function startOffer(userId) {
+  try {
+    const { u, id } = hydrate(userId);
+    if (u.hasPaid || u.offerUntil) return u.offerUntil || null;
+    u.offerUntil = Date.now() + OFFER_TTL;
+    dbSaveUser(id, u);
+    return u.offerUntil;
+  } catch { return null; }
 }
 
 function setUserInfo(userId, { username, firstName } = {}) {
@@ -357,6 +443,9 @@ function getUsers() {
     lastSeen:     u.lastSeen    || null,
     username:     u.username    || null,
     firstName:    u.firstName   || null,
+    source:       u.source      || null,
+    streak:       u.streak      || 0,
+    hasPaid:      !!u.hasPaid,
   })).sort((a, b) => b.totalAsked - a.totalAsked);
 }
 
@@ -412,6 +501,37 @@ async function redeemGift(code, toUserId) {
   return { ok: true, days: gift.days, fromUserId: gift.fromUserId, until };
 }
 
+// ─── Payments + traffic sources ───────────────────────────────
+function logPayment(userId, stars, payload) {
+  const p = { userId: userId ? String(userId) : '?', stars: stars || 0, payload: payload || null, ts: Date.now() };
+  paymentLog.unshift(p);
+  if (dbReady && pool) {
+    pool.query('INSERT INTO payments (user_id, stars, payload, ts) VALUES ($1,$2,$3,$4)',
+      [p.userId, p.stars, p.payload, p.ts]
+    ).catch(e => console.error('[DB] logPayment:', e.message));
+  }
+}
+
+function getSourceStats() {
+  const starsByUser = {};
+  for (const p of paymentLog) {
+    starsByUser[p.userId] = (starsByUser[p.userId] || 0) + (p.stars || 0);
+  }
+  const now = new Date();
+  const nowMs = Date.now();
+  const bySource = {};
+  for (const [id, u] of Object.entries(memUsers)) {
+    const src = u.source || 'organic';
+    if (!bySource[src]) bySource[src] = { source: src, users: 0, active7d: 0, premium: 0, payers: 0, stars: 0 };
+    const s = bySource[src];
+    s.users++;
+    if (u.lastSeen && nowMs - u.lastSeen < 7 * 86_400_000) s.active7d++;
+    if (u.premiumUntil && new Date(u.premiumUntil) > now) s.premium++;
+    if (starsByUser[id]) { s.payers++; s.stars += starsByUser[id]; }
+  }
+  return Object.values(bySource).sort((a, b) => b.users - a.users);
+}
+
 // ─── Funnel events ────────────────────────────────────────────
 const eventLog2 = [];
 const EV_MAX    = 10_000;
@@ -454,4 +574,5 @@ module.exports = {
   addBonus, applyReferral, logQuestion, getUserQuestions,
   getStats, getUsers, getQuestions,
   createGift, redeemGift, logEvent, getFunnelStats, getABVariant,
+  setSource, markPaid, startOffer, logPayment, getSourceStats,
 };

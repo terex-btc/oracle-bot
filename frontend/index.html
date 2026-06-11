@@ -43,6 +43,12 @@
       </div>
 
       <div class="question-section">
+        <div class="cat-row" id="cat-row">
+          <button class="cat-chip active" data-cat="general">✨ <span id="cat-all-label">Все</span></button>
+          <button class="cat-chip" data-cat="love">💕 <span id="cat-love-label">Любовь</span><span class="cat-lock">🔒</span></button>
+          <button class="cat-chip" data-cat="money">💰 <span id="cat-money-label">Деньги</span><span class="cat-lock">🔒</span></button>
+          <button class="cat-chip" data-cat="work">💼 <span id="cat-work-label">Карьера</span><span class="cat-lock">🔒</span></button>
+        </div>
         <div class="question-box">
           <textarea
             id="question-input"
@@ -108,6 +114,20 @@
         <div class="paywall-orb">🔮</div>
         <h2 class="paywall-title">Оракул молчит...</h2>
         <p class="paywall-sub">Ты исчерпал лимит на сегодня</p>
+
+        <!-- Оффер першої покупки: 7 днів за 50★ протягом 24 год -->
+        <div class="offer-banner" id="offer-banner" style="display:none">
+          <div class="offer-fire">🎁</div>
+          <div class="offer-info">
+            <div class="offer-title" id="offer-title">Только сейчас: 7 дней за полцены!</div>
+            <div class="offer-timer-row">
+              <span class="offer-old">100 ★</span>
+              <span class="offer-new">50 ★</span>
+              <span class="offer-timer" id="offer-timer">23:59:59</span>
+            </div>
+          </div>
+          <button class="offer-btn" id="offer-btn">Забрать</button>
+        </div>
 
         <!-- 3 плани -->
         <div class="plans-grid">
