@@ -98,6 +98,10 @@ function OrbCanvas(canvas, size, isMain) {
   canvas.style.width  = size + 'px';
   canvas.style.height = size + 'px';
   const ctx = canvas.getContext('2d');
+  if (!ctx) {
+    const noop = () => {};
+    return { setColor: noop, pause: noop, resume: noop, stop: noop, setEnergy: noop, setTilt: noop, clearTilt: noop };
+  }
   const R = (size * dpr) / 2;
 
   let hue = 278, targetHue = 278, raf;
@@ -293,7 +297,266 @@ function OrbCanvas(canvas, size, isMain) {
     targetHue = map[colorName] ?? 278;
   }
 
-  return { setColor, pause, resume, stop: () => { paused = true; cancelAnimationFrame(raf); } };
+  const noop = () => {};
+  return { setColor, pause, resume, stop: () => { paused = true; cancelAnimationFrame(raf); }, setEnergy: noop, setTilt: noop, clearTilt: noop };
+}
+
+// ─── WebGL Mystic Orb — galaxy inside a crystal sphere ────────
+function OrbGL(canvas, size) {
+  const dpr = Math.min(window.devicePixelRatio || 1, 2);
+  canvas.width  = size * dpr;
+  canvas.height = size * dpr;
+  canvas.style.width  = size + 'px';
+  canvas.style.height = size + 'px';
+
+  const gl = canvas.getContext('webgl', {
+    alpha: true, premultipliedAlpha: true, antialias: false,
+    depth: false, stencil: false, powerPreference: 'low-power',
+  });
+  if (!gl) return null;
+
+  const VERT = 'attribute vec2 aPos;void main(){gl_Position=vec4(aPos,0.0,1.0);}';
+
+  const FRAG = `
+#ifdef GL_FRAGMENT_PRECISION_HIGH
+precision highp float;
+#else
+precision mediump float;
+#endif
+uniform vec2  uRes;
+uniform float uTime;
+uniform float uHue;
+uniform float uEnergy;
+uniform vec2  uTilt;
+
+#define PI  3.14159265
+#define TAU 6.28318530
+
+vec3 hsl2rgb(vec3 c){
+  vec3 rgb = clamp(abs(mod(c.x*6.0+vec3(0.0,4.0,2.0),6.0)-3.0)-1.0,0.0,1.0);
+  return c.z + c.y*(rgb-0.5)*(1.0-abs(2.0*c.z-1.0));
+}
+float hash21(vec2 p){
+  p = fract(p*vec2(234.34,435.345));
+  p += dot(p,p+34.23);
+  return fract(p.x*p.y);
+}
+float vnoise(vec2 p){
+  vec2 i = floor(p), f = fract(p);
+  f = f*f*(3.0-2.0*f);
+  return mix(mix(hash21(i),hash21(i+vec2(1.0,0.0)),f.x),
+             mix(hash21(i+vec2(0.0,1.0)),hash21(i+vec2(1.0,1.0)),f.x),f.y);
+}
+float fbm(vec2 p){
+  float v = 0.0, a = 0.55;
+  for(int i=0;i<4;i++){
+    v += a*vnoise(p);
+    p = mat2(0.8,0.6,-0.6,0.8)*p*2.03;
+    a *= 0.55;
+  }
+  return v;
+}
+vec2 rot2(vec2 p, float a){
+  float c = cos(a), s = sin(a);
+  return mat2(c,-s,s,c)*p;
+}
+
+// diamond glitter: bright point + cross-shaped glint
+float glitter(vec2 p, float density, float ang, float seed){
+  p = rot2(p, ang);
+  vec2 g = p*density;
+  vec2 id = floor(g);
+  vec2 f = fract(g)-0.5;
+  float n = hash21(id+seed);
+  if(n < 0.62) return 0.0;
+  vec2 offs = vec2(hash21(id+seed*1.7+13.1), hash21(id+seed*2.3+27.7))-0.5;
+  vec2 q = f-offs*0.7;
+  float tw = 0.5+0.5*sin(uTime*(1.6+n*3.0)+n*44.0);
+  tw = tw*tw*tw;
+  float core  = exp(-dot(q,q)*220.0)*1.3;
+  float cross = exp(-abs(q.x)*60.0)*exp(-abs(q.y)*12.0)
+              + exp(-abs(q.y)*60.0)*exp(-abs(q.x)*12.0);
+  return (core + cross*0.5)*tw;
+}
+
+void main(){
+  vec2 uv = (gl_FragCoord.xy*2.0-uRes)/min(uRes.x,uRes.y);
+  float edge = 0.94;
+  float aa = 3.0/min(uRes.x,uRes.y);
+  float r = length(uv);
+  float inside = 1.0-smoothstep(edge-aa,edge,r);
+  if(inside <= 0.001){ gl_FragColor = vec4(0.0); return; }
+
+  vec2 suv = uv/edge;
+  float rs = min(length(suv),1.0);
+  float nz = sqrt(1.0-rs*rs);
+  vec3 n = vec3(suv,nz);
+
+  float t  = uTime;
+  float en = uEnergy;
+  float hue = uHue/360.0;
+  float pulse = 0.5+0.5*sin(t*(1.2+en*4.5));
+
+  // inner space: lens refraction + touch parallax
+  vec2 p = suv*(0.72+0.32*nz) + uTilt*0.15;
+  float pr = length(p);
+  float pa = atan(p.y,p.x);
+
+  vec3 cDeep = hsl2rgb(vec3(fract(hue-0.08+1.0),0.75,0.14));
+  vec3 cMain = hsl2rgb(vec3(fract(hue),0.95,0.52));
+  vec3 cGlow = hsl2rgb(vec3(fract(hue+0.06),1.00,0.70));
+  vec3 cPink = hsl2rgb(vec3(fract(hue+0.11),1.00,0.80));
+
+  // clear glass: faint cool tint, background shows through
+  vec3 col = cDeep*0.20*(0.5+0.5*nz);
+
+  // ── soft ambient mist ──
+  float spin = t*(0.04+0.40*en);
+  float dn0 = fbm(rot2(p, spin*0.5)*2.1 + vec2(0.0, t*0.02));
+  col += cMain*dn0*0.10;
+
+  // ── the smoke ribbon: glowing iso-bands of warped noise ──
+  vec2 np = rot2(p, spin*0.8);
+  float w1 = fbm(np*1.8 + vec2(0.0, t*0.05));
+  float w2 = fbm(np*2.6 + vec2(t*0.04, 3.7));
+  float dn = fbm(np*2.0 + vec2(w1,w2)*1.6 + vec2(0.0, t*0.03));
+  float rib  = exp(-abs(dn-0.52)*(16.0-5.0*en));
+  float rib2 = exp(-abs(dn-0.34)*22.0)*0.55;
+  float ribbon = (rib+rib2) * (1.0 - smoothstep(0.55, 0.95, pr));
+  vec3 ribCol = mix(cMain, cPink, 0.5+0.5*sin(dn*9.0+t*0.5));
+  ribCol = mix(ribCol, vec3(0.72,0.78,1.0), 0.30*(0.5+0.5*sin(pa*2.0+t*0.3)));
+  col += ribCol * ribbon * (0.85+en*0.85);
+
+  // ── luminous core with ripple rings ──
+  float coreG = exp(-pr*pr*22.0);
+  float rings = pow(0.5+0.5*sin(pr*34.0 - t*(1.0+en*3.0)), 8.0) * exp(-pr*3.4);
+  col += cGlow * rings * (0.30+0.30*pulse+0.40*en);
+  col += (vec3(1.0,0.95,1.0)*0.65 + cGlow*0.55) * coreG * (0.75+0.40*pulse+0.90*en);
+
+  // ── sparse diamond glitter ──
+  float gl1 = glitter(p, 4.5,  t*0.10, 3.1);
+  float gl2 = glitter(p*1.3, 7.0, -t*0.07, 7.7)*0.7;
+  col += (vec3(1.0,0.97,0.90)*gl1 + vec3(1.0,0.92,1.0)*gl2) * (0.60+0.40*pulse) * (0.30+0.70*nz);
+
+  // sphere depth shading
+  col *= 0.45+0.55*pow(nz,0.7);
+
+  // ── pink caustic where the ball meets the stand ──
+  col += cPink * pow(max(-suv.y-0.30,0.0),2.0) * 0.9 * (0.4+0.6*nz);
+
+  // ── iridescent fresnel rim ──
+  float fres = pow(1.0-nz,2.2);
+  vec3 iri = hsl2rgb(vec3(fract(hue+0.40*fres+0.05*sin(t*0.5)),0.80,0.74));
+  col += iri*fres*0.50;
+
+  // ── big soft window reflection (upper crescent) ──
+  float upper = smoothstep(0.05, 0.55, suv.y);
+  float arcBand = smoothstep(0.30, 0.62, rs) * (1.0 - smoothstep(0.80, 0.96, rs));
+  float window = upper*arcBand*(0.55+0.45*sin(pa*1.5+1.2));
+  col += vec3(0.95,0.96,1.0)*window*0.34;
+
+  // faint curved environment bands at the bottom
+  float lower = smoothstep(0.15, 0.70, -suv.y);
+  float bands = 0.5+0.5*sin(suv.y*14.0 + suv.x*2.0);
+  col += vec3(0.80,0.85,1.0)*lower*arcBand*bands*0.10;
+
+  // ── glass speculars ──
+  float sp1 = pow(max(dot(n,normalize(vec3(-0.45,0.62,0.65))),0.0),26.0);
+  float sp2 = pow(max(dot(n,normalize(vec3(-0.30,0.46,0.83))),0.0),150.0);
+  float sp3 = pow(max(dot(n,normalize(vec3(0.40,-0.50,0.77))),0.0),90.0);
+  col += vec3(0.92,0.88,1.0)*sp1*0.55 + vec3(1.0)*sp2*1.0 + vec3(0.9,0.92,1.0)*sp3*0.35;
+
+  col *= 1.0+en*0.25;
+  col = col/(1.0+col*0.42);
+  col = pow(col, vec3(0.92));
+
+  // glass transparency: clear in the middle, denser rim, opaque highlights
+  float content = clamp(ribbon*0.9 + coreG*1.2 + rings*0.8 + (gl1+gl2)*0.6 + dn0*0.15, 0.0, 1.0);
+  float alphaV = clamp(0.42 + 0.32*fres + 0.45*content + window*0.55 + sp1*0.6 + sp2, 0.0, 1.0);
+
+  gl_FragColor = vec4(col*inside, alphaV*inside);
+}`;
+
+  function compile(type, src) {
+    const sh = gl.createShader(type);
+    gl.shaderSource(sh, src);
+    gl.compileShader(sh);
+    if (!gl.getShaderParameter(sh, gl.COMPILE_STATUS)) { gl.deleteShader(sh); return null; }
+    return sh;
+  }
+  const vs = compile(gl.VERTEX_SHADER, VERT);
+  const fs = compile(gl.FRAGMENT_SHADER, FRAG);
+  if (!vs || !fs) return null;
+  const prog = gl.createProgram();
+  gl.attachShader(prog, vs);
+  gl.attachShader(prog, fs);
+  gl.linkProgram(prog);
+  if (!gl.getProgramParameter(prog, gl.LINK_STATUS)) return null;
+  gl.useProgram(prog);
+
+  gl.bindBuffer(gl.ARRAY_BUFFER, gl.createBuffer());
+  gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1,-1, 3,-1, -1,3]), gl.STATIC_DRAW);
+  const loc = gl.getAttribLocation(prog, 'aPos');
+  gl.enableVertexAttribArray(loc);
+  gl.vertexAttribPointer(loc, 2, gl.FLOAT, false, 0, 0);
+
+  const U = {};
+  ['uRes','uTime','uHue','uEnergy','uTilt'].forEach(u => U[u] = gl.getUniformLocation(prog, u));
+  gl.viewport(0, 0, canvas.width, canvas.height);
+  gl.uniform2f(U.uRes, canvas.width, canvas.height);
+  gl.disable(gl.DEPTH_TEST);
+  gl.disable(gl.BLEND);
+
+  let hue = 278, targetHue = 278;
+  let energy = 0, targetEnergy = 0;
+  let tiltX = 0, tiltY = 0, userTiltX = 0, userTiltY = 0, userTiltAt = 0;
+  let paused = false, raf = null, lastFrame = 0, lost = false;
+
+  canvas.addEventListener('webglcontextlost', e => { e.preventDefault(); lost = true; });
+
+  function frame(now) {
+    if (paused || lost) { raf = null; return; }
+    raf = requestAnimationFrame(frame);
+    const fps = orbIdle ? 30 : 60;
+    if (now - lastFrame < 1000 / fps) return;
+    lastFrame = now;
+    const t = now * 0.001;
+    hue    += (targetHue - hue) * 0.026;
+    energy += (targetEnergy - energy) * (targetEnergy > energy ? 0.07 : 0.03);
+    // touch parallax, drifts on its own when untouched
+    const hasUser = (performance.now() - userTiltAt) < 2200;
+    const tx = hasUser ? userTiltX : Math.sin(t * 0.21) * 0.20;
+    const ty = hasUser ? userTiltY : Math.cos(t * 0.16) * 0.16;
+    tiltX += (tx - tiltX) * 0.05;
+    tiltY += (ty - tiltY) * 0.05;
+    gl.uniform1f(U.uTime, t);
+    gl.uniform1f(U.uHue, hue);
+    gl.uniform1f(U.uEnergy, energy);
+    gl.uniform2f(U.uTilt, tiltX, tiltY);
+    gl.drawArrays(gl.TRIANGLES, 0, 3);
+  }
+  raf = requestAnimationFrame(frame);
+
+  return {
+    setColor(name) {
+      const map = { yes: 152, no: 352, maybe: 44, default: 278 };
+      targetHue = map[name] ?? 278;
+    },
+    setEnergy(v) { targetEnergy = v; },
+    setTilt(x, y) { userTiltX = x; userTiltY = y; userTiltAt = performance.now(); },
+    clearTilt() { userTiltAt = 0; },
+    pause() { paused = true; },
+    resume() { if (!paused) return; paused = false; if (!raf) raf = requestAnimationFrame(frame); },
+    stop() { paused = true; if (raf) cancelAnimationFrame(raf); },
+  };
+}
+
+function createOrb(canvas, size, isMain) {
+  try {
+    const orb = OrbGL(canvas, size);
+    if (orb) return orb;
+  } catch (e) {}
+  return OrbCanvas(canvas, size, isMain);
 }
 
 // Idle detection — 30fps after 5s of no touch/click
@@ -309,8 +572,72 @@ function resetOrbIdle() {
 );
 resetOrbIdle();
 
-const mainOrb   = OrbCanvas(document.getElementById('orb-canvas'),        240, true);
-const answerOrb = OrbCanvas(document.getElementById('answer-orb-canvas'),  90, false);
+const mainOrb   = createOrb(document.getElementById('orb-canvas'),        240, true);
+const answerOrb = createOrb(document.getElementById('answer-orb-canvas'),  90, false);
+
+// ─── Mystic decor: rune wheel + rising motes ───────────────────
+function buildOrbDecor() {
+  const wrap = document.getElementById('orb-wrapper');
+  const section = document.getElementById('orb-section');
+  if (!wrap || !section) return;
+
+  const runes = ['☽','✦','☿','✧','♆','✶','☾','⚹','♀︎','✵','♃','✺'];
+  const wheel = document.createElement('div');
+  wheel.className = 'orb-runes';
+  runes.forEach((ch, i) => {
+    const s = document.createElement('span');
+    s.textContent = ch;
+    s.style.setProperty('--a', (i * 360 / runes.length) + 'deg');
+    s.style.setProperty('--tw', (Math.random() * 4.5).toFixed(1) + 's');
+    wheel.appendChild(s);
+  });
+  wrap.appendChild(wheel);
+
+  const motes = document.createElement('div');
+  motes.className = 'orb-motes';
+  const colors = ['rgba(245,200,66,', 'rgba(244,63,143,', 'rgba(192,132,252,', 'rgba(255,255,255,'];
+  for (let i = 0; i < 14; i++) {
+    const m = document.createElement('i');
+    const sz = (Math.random() * 2.5 + 1.5).toFixed(1);
+    m.style.cssText = [
+      `left:${(Math.random() * 76 + 12).toFixed(0)}%`,
+      `bottom:${(Math.random() * 18 + 4).toFixed(0)}%`,
+      `width:${sz}px`, `height:${sz}px`,
+      `--mc:${colors[i % 4]}0.9)`,
+      `--md:${(Math.random() * 7 + 6).toFixed(1)}s`,
+      `--mdel:${(Math.random() * 9).toFixed(1)}s`,
+      `--mx:${(Math.random() * 60 - 30).toFixed(0)}px`,
+    ].join(';');
+    motes.appendChild(m);
+  }
+  section.appendChild(motes);
+
+  const ped = document.createElement('div');
+  ped.className = 'orb-pedestal';
+  ped.innerHTML = `
+    <div class="pedestal-glow"></div>
+    <div class="pedestal-top"></div>
+    <div class="pedestal-body">☽ ✦ ☿ ✧ ♆ ✶ ☾</div>
+    <div class="pedestal-base"></div>
+    <div class="floor-ring"></div>
+    <div class="floor-ring floor-ring-2"></div>`;
+  wrap.insertAdjacentElement('afterend', ped);
+}
+buildOrbDecor();
+
+// Шар реагує на дотик — паралакс галактики всередині
+const orbTouchEl = document.getElementById('orb-wrapper');
+if (orbTouchEl) {
+  orbTouchEl.addEventListener('pointermove', e => {
+    const b = orbTouchEl.getBoundingClientRect();
+    const x = ((e.clientX - b.left) / b.width) * 2 - 1;
+    const y = -(((e.clientY - b.top) / b.height) * 2 - 1);
+    mainOrb.setTilt(x * 0.6, y * 0.6);
+  }, { passive: true });
+  ['pointerleave', 'pointerup', 'pointercancel'].forEach(ev =>
+    orbTouchEl.addEventListener(ev, () => mainOrb.clearTilt(), { passive: true })
+  );
+}
 
 // ─── i18n ──────────────────────────────────────────────────────
 const LANGS = {
@@ -696,6 +1023,7 @@ async function askOracle() {
 
   askBtn.disabled = true;
   orbWrap?.classList.add('asking');
+  mainOrb.setEnergy(1);
   showLoading(true);
 
   try {
@@ -732,6 +1060,7 @@ async function askOracle() {
   } finally {
     askBtn.disabled = false;
     orbWrap?.classList.remove('asking');
+    mainOrb.setEnergy(0);
     showLoading(false);
   }
 }
@@ -986,7 +1315,7 @@ function showAnswer(question, answer) {
   const orbGlow = document.getElementById('orb-glow');
   if (orbGlow) {
     const c = glowColors[answer.color] || '#8b3dff';
-    orbGlow.style.background = `radial-gradient(circle, ${c}50 0%, transparent 70%)`;
+    orbGlow.style.background = `radial-gradient(circle, transparent 28%, ${c}40 55%, transparent 78%)`;
   }
 
   const glowMap = {
