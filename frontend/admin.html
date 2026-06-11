@@ -198,6 +198,20 @@ tr.clickable:hover td{background:rgba(139,61,255,.08)}
 .mq-time{font-size:11px;color:var(--muted);white-space:nowrap;text-align:right}
 .mq-date{font-size:10px;color:rgba(123,111,160,.55);text-align:right;margin-top:2px}
 
+/* Countdown badge */
+.cd-badge{font-size:12px;color:var(--muted);background:var(--bg);border:1px solid var(--border);border-radius:6px;padding:3px 8px;min-width:44px;text-align:center;font-variant-numeric:tabular-nums}
+
+/* Modal action buttons */
+.modal-actions{display:flex;flex-wrap:wrap;gap:6px;padding:10px 20px;border-bottom:1px solid var(--border);flex-shrink:0}
+.ma-btn{padding:5px 12px;border-radius:8px;border:1px solid var(--border);background:transparent;color:var(--text);font-size:12px;cursor:pointer;transition:all .15s;white-space:nowrap}
+.ma-btn:hover{border-color:var(--purple);color:var(--purple)}
+.ma-prem{border-color:rgba(245,200,66,.35);color:var(--gold)}
+.ma-prem:hover{border-color:var(--gold);background:rgba(245,200,66,.08)}
+.ma-danger{border-color:rgba(239,68,68,.35);color:var(--red)}
+.ma-danger:hover{border-color:var(--red);background:rgba(239,68,68,.1)}
+.ma-bonus{border-color:rgba(96,165,250,.35);color:var(--blue)}
+.ma-bonus:hover{border-color:var(--blue);background:rgba(96,165,250,.1)}
+
 /* Scrollbar */
 ::-webkit-scrollbar{width:5px;height:5px}
 ::-webkit-scrollbar-track{background:transparent}
@@ -235,6 +249,7 @@ tr.clickable:hover td{background:rgba(139,61,255,.08)}
       <span class="live-dot" id="live-dot"></span>
       <span style="font-size:12px;color:var(--muted)" id="live-label">підключення...</span>
       <button class="btn-sm" onclick="refreshAll(true)">↺ Оновити</button>
+      <span class="cd-badge" id="cd-text" title="Автооновлення">—</span>
       <span class="update-info" id="last-updated" style="font-size:12px;color:var(--muted)"></span>
       <button class="btn-sm btn-logout" onclick="logout()">Вийти</button>
     </div>
@@ -248,7 +263,7 @@ tr.clickable:hover td{background:rgba(139,61,255,.08)}
       <div class="stat-card c-green"><div class="stat-label">Питань сьогодні</div><div class="stat-val" id="s-today">—</div></div>
       <div class="stat-card c-blue"><div class="stat-label">За останню годину</div><div class="stat-val" id="s-hour">—</div></div>
       <div class="stat-card c-pink"><div class="stat-label">Всього питань</div><div class="stat-val" id="s-total">—</div></div>
-      <div class="stat-card c-red"><div class="stat-label">Питань в лозі</div><div class="stat-val" id="s-logged">—</div></div>
+      <div class="stat-card c-red"><div class="stat-label">Активних сьогодні</div><div class="stat-val" id="s-active">—</div></div>
     </div>
 
     <!-- Charts -->
@@ -298,6 +313,7 @@ tr.clickable:hover td{background:rgba(139,61,255,.08)}
         <div class="panel-hdr">
           <div class="panel-hdr-top">
             <span class="panel-hdr-title">👥 Юзери <span class="count-badge" id="u-count">0</span></span>
+            <button class="btn-sm" onclick="exportUsersCSV()" title="Завантажити CSV">⬇ CSV</button>
           </div>
           <div class="filter-row">
             <input class="search-input" placeholder="Пошук по ID або нікнейму..." id="u-search" oninput="renderUsers()" style="flex:1"/>
@@ -431,6 +447,14 @@ tr.clickable:hover td{background:rgba(139,61,255,.08)}
       <div class="ms"><div class="ms-l">Статус</div><div class="ms-v" id="ms-status">—</div></div>
       <div class="ms"><div class="ms-l">Остання активність</div><div class="ms-v" id="ms-seen" style="font-size:13px">—</div></div>
     </div>
+    <div class="modal-actions">
+      <button class="ma-btn ma-prem" onclick="grantPremium(30)">⭐ +30 днів</button>
+      <button class="ma-btn ma-prem" onclick="grantPremium(365)">⭐ +1 рік</button>
+      <button class="ma-btn ma-prem" onclick="grantPremium(36500)">⭐ Назавжди</button>
+      <button class="ma-btn ma-danger" id="ma-revoke" onclick="revokeUserPremium()" style="display:none">➖ Скасувати преміум</button>
+      <button class="ma-btn ma-bonus" onclick="grantBonus(5)">+5 питань</button>
+      <button class="ma-btn ma-bonus" onclick="grantBonus(10)">+10 питань</button>
+    </div>
     <div class="modal-qs-hdr">
       💬 Питання <span class="count-badge" id="ms-qcount">0</span>
       <span class="modal-qs-spin" id="ms-spin">завантаження...</span>
@@ -448,11 +472,16 @@ let userMap    = {};   // userId → user object (for fast lookup)
 let charts     = {};
 let clockTimer = null;
 let sse        = null;
+let modalUserId = null;
 
 let fVerdict  = '';
 let fCategory = '';
 let sortBy    = 'totalAsked';
 let sortAsc   = false;
+
+const CD_MAX = 60;
+let cdSec    = CD_MAX;
+let cdTimer  = null;
 
 // ── Login ─────────────────────────────────────────────────────────────
 document.getElementById('login-btn').addEventListener('click', doLogin);
@@ -472,6 +501,7 @@ async function doLogin() {
     document.getElementById('dashboard').style.display = 'flex';
     startClock();
     connectSSE();
+    startAutoRefresh();
     bcRestoreSettings();
   } else {
     document.getElementById('login-err').textContent = 'Невірний пароль';
@@ -481,8 +511,8 @@ async function doLogin() {
 
 function logout() {
   localStorage.removeItem('ora_admin');
-  clearInterval(clockTimer);
-  clockTimer = null;
+  clearInterval(clockTimer); clockTimer = null;
+  clearInterval(cdTimer);    cdTimer    = null;
   if (sse) { sse.close(); sse = null; }
   document.getElementById('dashboard').style.display = 'none';
   document.getElementById('login').style.display      = 'flex';
@@ -502,6 +532,26 @@ function updateClock() {
     day: '2-digit', month: '2-digit', year: 'numeric',
     hour: '2-digit', minute: '2-digit', second: '2-digit',
   });
+}
+
+// ── Auto-refresh countdown ────────────────────────────────────────────
+function updateFill() {
+  const el = document.getElementById('cd-text');
+  if (el) el.textContent = cdSec + 'с';
+}
+
+function startAutoRefresh() {
+  clearInterval(cdTimer);
+  cdSec = CD_MAX;
+  updateFill();
+  cdTimer = setInterval(async () => {
+    cdSec--;
+    if (cdSec <= 0) {
+      cdSec = CD_MAX;
+      await refreshAll(false);
+    }
+    updateFill();
+  }, 1000);
 }
 
 // ── SSE — live updates when someone asks a question ────────────────────
@@ -588,7 +638,7 @@ function renderStats(s) {
   document.getElementById('s-today').textContent  = fmt(s.questionsToday);
   document.getElementById('s-hour').textContent   = fmt(s.questionsLastHour);
   document.getElementById('s-total').textContent  = fmt(s.totalQuestions);
-  document.getElementById('s-logged').textContent = fmt(s.loggedQuestions);
+  document.getElementById('s-active').textContent = fmt(s.activeTodayUsers);
 }
 
 function fmt(n) { return n == null ? '—' : Number(n).toLocaleString(); }
@@ -768,8 +818,7 @@ function renderQuestions() {
 
   feed.innerHTML = list.map(q => {
     const d   = new Date(q.ts);
-    const td  = d.toLocaleTimeString('uk', { hour: '2-digit', minute: '2-digit' });
-    const dd  = d.toLocaleDateString('uk', { day: '2-digit', month: '2-digit' });
+    const full = d.toLocaleString('uk', { day:'2-digit', month:'2-digit', hour:'2-digit', minute:'2-digit' });
     const u   = userMap[q.userId];
     const catLabel = q.category ? `<span class="cat-badge">${CAT_EMOJI[q.category] || ''} ${esc(q.category)}</span>` : '';
     const nickLabel = u?.username ? `<span style="color:var(--purple);font-size:11px">@${esc(u.username)}</span>` : '';
@@ -786,7 +835,7 @@ function renderQuestions() {
           ${catLabel}
         </div>
       </div>
-      <div><div class="q-time">${td}</div><div class="q-date">${dd}</div></div>
+      <div><div class="q-time" title="${full}">${timeAgo(q.ts)}</div></div>
     </div>`;
   }).join('');
 }
@@ -806,7 +855,11 @@ function toggleSort(col) {
 
 function renderUsers() {
   const search = (document.getElementById('u-search').value || '').toLowerCase();
-  let list = search ? allU.filter(u => u.userId.toLowerCase().includes(search)) : allU;
+  let list = search ? allU.filter(u =>
+    u.userId.toLowerCase().includes(search) ||
+    (u.firstName || '').toLowerCase().includes(search) ||
+    (u.username  || '').toLowerCase().includes(search)
+  ) : allU;
 
   list = [...list].sort((a, b) => {
     let av = a[sortBy], bv = b[sortBy];
@@ -844,7 +897,7 @@ function renderUsers() {
       <td class="uid-cell uid-btn" title="${esc(u.userId)}">${esc(shortId(u.userId))}</td>
       <td><strong>${u.totalAsked}</strong></td>
       <td>${status}</td>
-      <td style="color:var(--muted);font-size:12px">${ls}</td>
+      <td style="color:var(--muted);font-size:12px" title="${ls}">${u.lastSeen ? timeAgo(u.lastSeen) : '—'}</td>
     </tr>`;
   }).join('');
 }
@@ -856,6 +909,16 @@ function esc(s) {
 function shortId(id) {
   const s = String(id);
   return s.length > 10 ? s.slice(0,5) + '…' + s.slice(-4) : s;
+}
+function timeAgo(ts) {
+  const s = Math.floor((Date.now() - ts) / 1000);
+  if (s < 60)   return s + 'с тому';
+  const m = Math.floor(s / 60);
+  if (m < 60)   return m + 'хв тому';
+  const h = Math.floor(m / 60);
+  if (h < 24)   return h + 'год тому';
+  const d = Math.floor(h / 24);
+  return d + 'д тому';
 }
 
 const AVATAR_COLORS = ['#8b3dff','#3b82f6','#22c55e','#f59e0b','#ef4444','#ec4899','#06b6d4','#a855f7'];
@@ -870,6 +933,7 @@ function avatarLetter(u) {
 
 // ── User Modal ────────────────────────────────────────────────────────
 async function openUserModal(userId) {
+  modalUserId = userId;
   const modal = document.getElementById('user-modal');
   modal.classList.add('open');
   document.body.style.overflow = 'hidden';
@@ -903,6 +967,10 @@ async function openUserModal(userId) {
     ? new Date(u.lastSeen).toLocaleString('uk', { day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit' })
     : '—';
   document.getElementById('ms-seen').textContent = ls;
+
+  // Show/hide revoke button based on premium status
+  const maRevoke = document.getElementById('ma-revoke');
+  if (maRevoke) maRevoke.style.display = u.isPremium ? '' : 'none';
 
   // Load all questions for this user
   document.getElementById('ms-qcount').textContent = '…';
@@ -952,6 +1020,7 @@ function closeModal(e) {
   if (e && e.target !== document.getElementById('user-modal')) return;
   document.getElementById('user-modal').classList.remove('open');
   document.body.style.overflow = '';
+  modalUserId = null;
 }
 
 document.addEventListener('keydown', e => {
@@ -1066,6 +1135,102 @@ function onBroadcastDone({ sent, failed, total }) {
   document.getElementById('bc-status').textContent = `✅ Готово: ${sent} відправлено, ${failed} помилок`;
 }
 
+// ── Modal user actions ────────────────────────────────────────────────
+async function grantPremium(days) {
+  if (!modalUserId) return;
+  const label = days >= 36500 ? 'назавжди' : days + ' днів';
+  if (!confirm(`Дати преміум ${label} для ${modalUserId}?`)) return;
+  try {
+    const r = await fetch(`/admin/api/user/${encodeURIComponent(modalUserId)}/premium`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'x-admin-key': adminKey },
+      body: JSON.stringify({ days }),
+    });
+    const d = await r.json();
+    if (!d.ok) throw new Error(d.error);
+    if (userMap[modalUserId]) { userMap[modalUserId].isPremium = true; userMap[modalUserId].premiumUntil = d.until; }
+    document.getElementById('ms-status').innerHTML = '<span class="prem-badge">⭐ Преміум</span>';
+    const revokeBtn = document.getElementById('ma-revoke');
+    if (revokeBtn) revokeBtn.style.display = '';
+    showToast('✅ Преміум активовано: ' + label);
+  } catch (e) { showToast('❌ ' + e.message); }
+}
+
+async function revokeUserPremium() {
+  if (!modalUserId) return;
+  if (!confirm(`Скасувати преміум для ${modalUserId}?`)) return;
+  try {
+    const r = await fetch(`/admin/api/user/${encodeURIComponent(modalUserId)}/revoke-premium`, {
+      method: 'POST',
+      headers: { 'x-admin-key': adminKey },
+    });
+    const d = await r.json();
+    if (!d.ok) throw new Error(d.error);
+    if (userMap[modalUserId]) { userMap[modalUserId].isPremium = false; userMap[modalUserId].premiumUntil = null; }
+    document.getElementById('ms-status').innerHTML = '<span class="free-badge">Free</span>';
+    const revokeBtn = document.getElementById('ma-revoke');
+    if (revokeBtn) revokeBtn.style.display = 'none';
+    showToast('✅ Преміум скасовано');
+  } catch (e) { showToast('❌ ' + e.message); }
+}
+
+async function grantBonus(amount) {
+  if (!modalUserId) return;
+  try {
+    const r = await fetch(`/admin/api/user/${encodeURIComponent(modalUserId)}/bonus`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'x-admin-key': adminKey },
+      body: JSON.stringify({ amount }),
+    });
+    const d = await r.json();
+    if (!d.ok) throw new Error(d.error);
+    if (userMap[modalUserId]) userMap[modalUserId].freeBonus = d.freeBonus;
+    const bonusEl = document.getElementById('ms-bonus');
+    if (bonusEl) bonusEl.textContent = d.freeBonus > 0 ? '+' + d.freeBonus : '0';
+    showToast(`✅ Додано ${amount} питань (всього: ${d.freeBonus})`);
+  } catch (e) { showToast('❌ ' + e.message); }
+}
+
+function showToast(msg) {
+  let t = document.getElementById('admin-toast');
+  if (!t) {
+    t = document.createElement('div');
+    t.id = 'admin-toast';
+    t.style.cssText = 'position:fixed;bottom:24px;right:24px;background:#1e1a35;border:1px solid #2a2445;border-radius:10px;padding:10px 16px;font-size:13px;color:#e2ddf5;z-index:9999;transition:opacity .3s;box-shadow:0 4px 24px rgba(0,0,0,.6);pointer-events:none';
+    document.body.appendChild(t);
+  }
+  t.textContent = msg;
+  t.style.opacity = '1';
+  clearTimeout(t._t);
+  t._t = setTimeout(() => { t.style.opacity = '0'; }, 2800);
+}
+
+// ── CSV Export ────────────────────────────────────────────────────────
+function exportUsersCSV() {
+  if (!allU.length) { showToast('Список юзерів порожній'); return; }
+  const header = ['UserID','Name','Username','TotalAsked','DailyCount','Bonus','Premium','PremiumUntil','LastSeen'];
+  const rows = allU.map(u => [
+    u.userId,
+    u.firstName || '',
+    u.username ? '@' + u.username : '',
+    u.totalAsked,
+    u.dailyCount,
+    u.freeBonus,
+    u.isPremium ? 'Premium' : 'Free',
+    u.premiumUntil || '',
+    u.lastSeen ? new Date(u.lastSeen).toISOString() : '',
+  ]);
+  const csv = [header, ...rows]
+    .map(r => r.map(v => '"' + String(v).replace(/"/g, '""') + '"').join(','))
+    .join('\n');
+  const blob = new Blob(['﻿' + csv], { type: 'text/csv;charset=utf-8' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = 'oracle_users_' + new Date().toISOString().slice(0, 10) + '.csv';
+  a.click();
+  showToast(`✅ Завантажено ${allU.length} юзерів`);
+}
+
 // ── Auto-login from localStorage ──────────────────────────────────────
 (async function init() {
   const saved = localStorage.getItem('ora_admin');
@@ -1077,6 +1242,7 @@ function onBroadcastDone({ sent, failed, total }) {
     document.getElementById('dashboard').style.display = 'flex';
     startClock();
     connectSSE();
+    startAutoRefresh();
     bcRestoreSettings();
   } else {
     localStorage.removeItem('ora_admin');

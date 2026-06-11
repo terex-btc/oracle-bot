@@ -320,19 +320,29 @@ async function getUserQuestions(userId) {
   return memQ;
 }
 
+function revokePremium(userId) {
+  const { u, id } = hydrate(userId);
+  u.premiumUntil = null;
+  dbSaveUser(id, u);
+  return true;
+}
+
 function getStats() {
   const todayStr = today();
   const now      = new Date();
-  let totalUsers = 0, premiumUsers = 0, questionsToday = 0, totalQuestions = 0;
+  let totalUsers = 0, premiumUsers = 0, questionsToday = 0, totalQuestions = 0, activeTodayUsers = 0;
   for (const u of Object.values(memUsers)) {
     totalUsers++;
     if (u.premiumUntil && new Date(u.premiumUntil) > now) premiumUsers++;
     totalQuestions += (u.totalAsked || 0);
-    if (u.lastReset === todayStr) questionsToday += (u.dailyCount || 0);
+    if (u.lastReset === todayStr) {
+      questionsToday += (u.dailyCount || 0);
+      if (u.dailyCount > 0) activeTodayUsers++;
+    }
   }
   const hourAgo           = Date.now() - 3_600_000;
   const questionsLastHour = questionLog.filter(q => q.ts > hourAgo).length;
-  return { totalUsers, premiumUsers, questionsToday, questionsLastHour, totalQuestions, loggedQuestions: questionLog.length, dbReady };
+  return { totalUsers, premiumUsers, questionsToday, questionsLastHour, totalQuestions, loggedQuestions: questionLog.length, activeTodayUsers, dbReady };
 }
 
 function getUsers() {
@@ -440,7 +450,7 @@ function getABVariant(userId) {
 }
 
 module.exports = {
-  getStatus, increment, setUserInfo, activatePremium,
+  getStatus, increment, setUserInfo, activatePremium, revokePremium,
   addBonus, applyReferral, logQuestion, getUserQuestions,
   getStats, getUsers, getQuestions,
   createGift, redeemGift, logEvent, getFunnelStats, getABVariant,

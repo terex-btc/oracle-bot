@@ -6,11 +6,11 @@ const path         = require('path');
 const https        = require('https');
 const TelegramBot  = require('node-telegram-bot-api');
 const { getOracleAnswer } = require('./config/oracleAnswers');
-let getStatus, increment, setUserInfo, activatePremium, addBonus, applyReferral, logQuestion,
+let getStatus, increment, setUserInfo, activatePremium, revokePremium, addBonus, applyReferral, logQuestion,
     getUserQuestions, getStats, getUsers, getQuestions,
     createGift, redeemGift, logEvent, getFunnelStats, getABVariant;
 try {
-  ({ getStatus, increment, setUserInfo, activatePremium, addBonus, applyReferral,
+  ({ getStatus, increment, setUserInfo, activatePremium, revokePremium, addBonus, applyReferral,
      logQuestion, getUserQuestions, getStats, getUsers, getQuestions,
      createGift, redeemGift, logEvent, getFunnelStats, getABVariant } = require('./services/userService'));
 } catch (e) {
@@ -19,6 +19,7 @@ try {
   increment        = () => {};
   setUserInfo      = () => {};
   activatePremium  = () => new Date().toISOString();
+  revokePremium    = () => true;
   addBonus         = () => {};
   applyReferral    = () => false;
   logQuestion      = () => {};
@@ -883,6 +884,21 @@ adminApi.post('/user/:userId/premium', (req, res) => {
     const days  = parseInt(req.body.days) || 36500;
     const until = activatePremium(req.params.userId, days);
     res.json({ ok: true, userId: req.params.userId, days, until });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+adminApi.post('/user/:userId/revoke-premium', (req, res) => {
+  try {
+    revokePremium(req.params.userId);
+    res.json({ ok: true, userId: req.params.userId });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+adminApi.post('/user/:userId/bonus', (req, res) => {
+  try {
+    const amount    = Math.min(parseInt(req.body.amount) || 5, 100);
+    const freeBonus = addBonus(req.params.userId, amount);
+    res.json({ ok: true, userId: req.params.userId, amount, freeBonus });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
