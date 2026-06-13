@@ -328,153 +328,162 @@ uniform float uTime;
 uniform float uHue;
 uniform float uEnergy;
 uniform vec2  uTilt;
+uniform float uSteps;
 
-#define PI  3.14159265
-#define TAU 6.28318530
+#define PI 3.14159265
+#define MAX_STEPS 28
 
 vec3 hsl2rgb(vec3 c){
   vec3 rgb = clamp(abs(mod(c.x*6.0+vec3(0.0,4.0,2.0),6.0)-3.0)-1.0,0.0,1.0);
   return c.z + c.y*(rgb-0.5)*(1.0-abs(2.0*c.z-1.0));
 }
-float hash21(vec2 p){
-  p = fract(p*vec2(234.34,435.345));
-  p += dot(p,p+34.23);
-  return fract(p.x*p.y);
+mat3 rotX(float a){ float c=cos(a),s=sin(a); return mat3(1.0,0.0,0.0, 0.0,c,-s, 0.0,s,c); }
+mat3 rotY(float a){ float c=cos(a),s=sin(a); return mat3(c,0.0,s, 0.0,1.0,0.0, -s,0.0,c); }
+
+float hash13(vec3 p){
+  p = fract(p*0.1031);
+  p += dot(p, p.yzx + 33.33);
+  return fract((p.x + p.y) * p.z);
 }
-float vnoise(vec2 p){
-  vec2 i = floor(p), f = fract(p);
+float noise3(vec3 p){
+  vec3 i = floor(p), f = fract(p);
   f = f*f*(3.0-2.0*f);
-  return mix(mix(hash21(i),hash21(i+vec2(1.0,0.0)),f.x),
-             mix(hash21(i+vec2(0.0,1.0)),hash21(i+vec2(1.0,1.0)),f.x),f.y);
+  float n000=hash13(i+vec3(0.0,0.0,0.0)), n100=hash13(i+vec3(1.0,0.0,0.0));
+  float n010=hash13(i+vec3(0.0,1.0,0.0)), n110=hash13(i+vec3(1.0,1.0,0.0));
+  float n001=hash13(i+vec3(0.0,0.0,1.0)), n101=hash13(i+vec3(1.0,0.0,1.0));
+  float n011=hash13(i+vec3(0.0,1.0,1.0)), n111=hash13(i+vec3(1.0,1.0,1.0));
+  return mix(mix(mix(n000,n100,f.x),mix(n010,n110,f.x),f.y),
+             mix(mix(n001,n101,f.x),mix(n011,n111,f.x),f.y), f.z);
 }
-float fbm(vec2 p){
-  float v = 0.0, a = 0.55;
-  for(int i=0;i<4;i++){
-    v += a*vnoise(p);
-    p = mat2(0.8,0.6,-0.6,0.8)*p*2.03;
-    a *= 0.55;
-  }
+float fbm3(vec3 p){
+  float v=0.0, a=0.58;
+  for(int i=0;i<3;i++){ v += a*noise3(p); p*=2.03; a*=0.5; }
   return v;
 }
-vec2 rot2(vec2 p, float a){
-  float c = cos(a), s = sin(a);
-  return mat2(c,-s,s,c)*p;
+
+// the studio environment reflected by / seen through the glass
+vec3 envCol(vec3 d, float hue){
+  vec3 c = vec3(0.015,0.012,0.030);
+  c += vec3(0.50,0.58,0.82) * smoothstep(-0.10,0.92,d.y) * 0.50;            // soft top light
+  c += hsl2rgb(vec3(fract(hue),0.95,0.55)) * smoothstep(0.0,1.0,-d.x*0.5-d.y*0.4+0.4) * 0.30; // pink fill
+  c += hsl2rgb(vec3(fract(hue+0.10),1.0,0.70)) * smoothstep(0.2,1.0,d.x) * 0.14;
+  c += vec3(1.0)        * pow(max(dot(d,normalize(vec3(-0.5,0.65,0.55))),0.0), 50.0)  * 1.4; // softbox
+  c += vec3(1.0,0.92,1.0)* pow(max(dot(d,normalize(vec3(0.55,0.35,0.6))),0.0), 220.0) * 0.9; // glint
+  return c;
 }
 
-// diamond glitter: bright point + cross-shaped glint
-float glitter(vec2 p, float density, float ang, float seed){
-  p = rot2(p, ang);
-  vec2 g = p*density;
-  vec2 id = floor(g);
-  vec2 f = fract(g)-0.5;
-  float n = hash21(id+seed);
-  if(n < 0.62) return 0.0;
-  vec2 offs = vec2(hash21(id+seed*1.7+13.1), hash21(id+seed*2.3+27.7))-0.5;
-  vec2 q = f-offs*0.7;
-  float tw = 0.5+0.5*sin(uTime*(1.6+n*3.0)+n*44.0);
-  tw = tw*tw*tw;
-  float core  = exp(-dot(q,q)*220.0)*1.3;
-  float cross = exp(-abs(q.x)*60.0)*exp(-abs(q.y)*12.0)
-              + exp(-abs(q.y)*60.0)*exp(-abs(q.x)*12.0);
-  return (core + cross*0.5)*tw;
+// nebula density at a point inside the unit sphere (local galaxy space)
+float density(vec3 q, float t){
+  float n1  = fbm3(q*1.8 + vec3(0.0, t*0.10, 0.0));    // domain warp
+  float n   = fbm3(q*2.4 + n1*1.6 + vec3(0.0,0.0,t*0.05));
+  float rad = length(q);
+  float disc= exp(-q.y*q.y*3.2);                       // flatten into a galactic disc
+  float ball= smoothstep(1.0,0.2,rad);                 // fade out toward the glass shell
+  float arms= 0.6+0.4*sin(atan(q.z,q.x)*2.0 + rad*5.0 - t*0.30); // spiral arms
+  return smoothstep(0.46,0.85,n) * disc * ball * arms;
+}
+vec3 nebColor(vec3 q, float hue){
+  float rad = length(q);
+  vec3 cCore = hsl2rgb(vec3(fract(hue+0.10),0.90,0.86));
+  vec3 cMid  = hsl2rgb(vec3(fract(hue),     1.00,0.60));
+  vec3 cEdge = hsl2rgb(vec3(fract(hue-0.06),0.95,0.42));
+  vec3 c = mix(cCore, cMid, smoothstep(0.0,0.5,rad));
+  return mix(c, cEdge, smoothstep(0.45,0.95,rad));
 }
 
 void main(){
-  vec2 uv = (gl_FragCoord.xy*2.0-uRes)/min(uRes.x,uRes.y);
-  float edge = 0.94;
-  float aa = 3.0/min(uRes.x,uRes.y);
-  float r = length(uv);
-  float inside = 1.0-smoothstep(edge-aa,edge,r);
-  if(inside <= 0.001){ gl_FragColor = vec4(0.0); return; }
-
-  vec2 suv = uv/edge;
-  float rs = min(length(suv),1.0);
-  float nz = sqrt(1.0-rs*rs);
-  vec3 n = vec3(suv,nz);
-
-  float t  = uTime;
-  float en = uEnergy;
+  vec2 uv  = (gl_FragCoord.xy*2.0 - uRes)/min(uRes.x,uRes.y);
   float hue = uHue/360.0;
-  float pulse = 0.5+0.5*sin(t*(1.2+en*4.5));
+  float t   = uTime;
+  float en  = uEnergy;
 
-  // inner space: lens refraction + touch parallax
-  vec2 p = suv*(0.72+0.32*nz) + uTilt*0.15;
-  float pr = length(p);
-  float pa = atan(p.y,p.x);
+  // perspective camera, tilted by touch for parallax
+  vec3 ro = vec3(0.0,0.0,3.25);
+  vec3 rd = normalize(vec3(uv, -2.7));
+  mat3 vt = rotY(uTilt.x*0.22) * rotX(-uTilt.y*0.22);
+  ro = vt*ro; rd = vt*rd;
 
-  vec3 cDeep = hsl2rgb(vec3(fract(hue-0.08+1.0),0.75,0.14));
-  vec3 cMain = hsl2rgb(vec3(fract(hue),0.95,0.52));
-  vec3 cGlow = hsl2rgb(vec3(fract(hue+0.06),1.00,0.70));
-  vec3 cPink = hsl2rgb(vec3(fract(hue+0.11),1.00,0.80));
+  // analytic ray vs unit sphere intersection (real 3D geometry)
+  float b  = dot(ro,rd);
+  float c0 = dot(ro,ro) - 1.0;
+  float disc = b*b - c0;
 
-  // clear glass: faint cool tint, background shows through
-  vec3 col = cDeep*0.20*(0.5+0.5*nz);
+  if(disc < 0.0){                       // ray misses the glass - faint aura only
+    float g = exp(disc*2.2);
+    vec3 gcol = hsl2rgb(vec3(fract(hue+0.05),0.9,0.6)) * g * 0.22;
+    gl_FragColor = vec4(gcol, g*0.16);
+    return;
+  }
 
-  // ── soft ambient mist ──
-  float spin = t*(0.04+0.40*en);
-  float dn0 = fbm(rot2(p, spin*0.5)*2.1 + vec2(0.0, t*0.02));
-  col += cMain*dn0*0.10;
+  float sq  = sqrt(disc);
+  vec3 pos  = ro + rd*(-b - sq);        // front entry point
+  vec3 nrm  = pos;                       // surface normal (unit sphere at origin)
+  float ndv = max(dot(-rd, nrm), 0.0);
+  float fres = 0.03 + 0.97*pow(1.0-ndv, 5.0);
 
-  // ── the smoke ribbon: glowing iso-bands of warped noise ──
-  vec2 np = rot2(p, spin*0.8);
-  float w1 = fbm(np*1.8 + vec2(0.0, t*0.05));
-  float w2 = fbm(np*2.6 + vec2(t*0.04, 3.7));
-  float dn = fbm(np*2.0 + vec2(w1,w2)*1.6 + vec2(0.0, t*0.03));
-  float rib  = exp(-abs(dn-0.52)*(16.0-5.0*en));
-  float rib2 = exp(-abs(dn-0.34)*22.0)*0.55;
-  float ribbon = (rib+rib2) * (1.0 - smoothstep(0.55, 0.95, pr));
-  vec3 ribCol = mix(cMain, cPink, 0.5+0.5*sin(dn*9.0+t*0.5));
-  ribCol = mix(ribCol, vec3(0.72,0.78,1.0), 0.30*(0.5+0.5*sin(pa*2.0+t*0.3)));
-  col += ribCol * ribbon * (0.85+en*0.85);
+  // the galaxy spins in 3D (auto + touch)
+  mat3 gm = rotY(t*(0.05+en*0.22)) * rotX(0.42 + uTilt.y*0.5) * rotY(uTilt.x*0.7);
 
-  // ── luminous core with ripple rings ──
-  float coreG = exp(-pr*pr*22.0);
-  float rings = pow(0.5+0.5*sin(pr*34.0 - t*(1.0+en*3.0)), 8.0) * exp(-pr*3.4);
-  col += cGlow * rings * (0.30+0.30*pulse+0.40*en);
-  col += (vec3(1.0,0.95,1.0)*0.65 + cGlow*0.55) * coreG * (0.75+0.40*pulse+0.90*en);
+  // refract into the glass and ray-march the interior volume
+  vec3  rr = refract(rd, nrm, 1.0/1.47);
+  float dt = 2.05 / max(uSteps, 1.0);
+  float jit = hash13(vec3(gl_FragCoord.xy, t));
+  vec3  sp  = pos + rr*dt*jit;
+  vec3  acc = vec3(0.0);
+  float trans = 1.0;
+  for(int i=0;i<MAX_STEPS;i++){
+    if(float(i) >= uSteps) break;
+    if(dot(sp,sp) > 1.0)  break;        // left the sphere
+    vec3 q = gm*sp;
+    float d = density(q, t);
+    if(d > 0.001){
+      acc   += nebColor(q, hue) * d * trans * dt * 7.0;
+      trans *= 1.0 - d*dt*5.0;
+      if(trans < 0.03) break;
+    }
+    sp += rr*dt;
+  }
 
-  // ── sparse diamond glitter ──
-  float gl1 = glitter(p, 4.5,  t*0.10, 3.1);
-  float gl2 = glitter(p*1.3, 7.0, -t*0.07, 7.7)*0.7;
-  col += (vec3(1.0,0.97,0.90)*gl1 + vec3(1.0,0.92,1.0)*gl2) * (0.60+0.40*pulse) * (0.30+0.70*nz);
+  // luminous core: glow when the refracted ray passes near the heart
+  float pulse = 0.5+0.5*sin(t*(1.1+en*4.0));
+  float ca    = length(pos - rr*dot(pos,rr));
+  float core  = exp(-ca*ca*6.0);
+  vec3  coreCol = vec3(1.0,0.96,1.0)*0.7 + hsl2rgb(vec3(fract(hue+0.08),1.0,0.75))*0.6;
+  acc += coreCol * core * (0.6 + 0.5*pulse + 0.8*en) * trans;
 
-  // sphere depth shading
-  col *= 0.45+0.55*pow(nz,0.7);
+  // sparse stars drifting with the galaxy
+  vec3 sc = gm*pos*6.0;
+  float st = hash13(floor(sc));
+  acc += vec3(1.0,0.97,0.95) * step(0.93, st)
+       * (0.5+0.5*sin(t*(1.5+st*3.0)+st*40.0)) * 0.5 * (0.4+0.6*ndv);
 
-  // ── pink caustic where the ball meets the stand ──
-  col += cPink * pow(max(-suv.y-0.30,0.0),2.0) * 0.9 * (0.4+0.6*nz);
+  vec3 interior = acc;
 
-  // ── iridescent fresnel rim ──
-  float fres = pow(1.0-nz,2.2);
-  vec3 iri = hsl2rgb(vec3(fract(hue+0.40*fres+0.05*sin(t*0.5)),0.80,0.74));
-  col += iri*fres*0.50;
+  // glass = interior seen through it + fresnel reflection of the room
+  vec3 refl = envCol(reflect(rd, nrm), hue);
+  vec3 col  = mix(interior, refl, fres*0.7);
 
-  // ── big soft window reflection (upper crescent) ──
-  float upper = smoothstep(0.05, 0.55, suv.y);
-  float arcBand = smoothstep(0.30, 0.62, rs) * (1.0 - smoothstep(0.80, 0.96, rs));
-  float window = upper*arcBand*(0.55+0.45*sin(pa*1.5+1.2));
-  col += vec3(0.95,0.96,1.0)*window*0.34;
+  // iridescent fresnel rim
+  float rim = pow(1.0-ndv, 2.6);
+  col += hsl2rgb(vec3(fract(hue+0.42*rim+0.05*sin(t*0.5)),0.85,0.72)) * rim * 0.55;
 
-  // faint curved environment bands at the bottom
-  float lower = smoothstep(0.15, 0.70, -suv.y);
-  float bands = 0.5+0.5*sin(suv.y*14.0 + suv.x*2.0);
-  col += vec3(0.80,0.85,1.0)*lower*arcBand*bands*0.10;
+  // sharp surface speculars
+  float s1 = pow(max(dot(nrm, normalize(vec3(-0.45,0.62,0.65))),0.0), 30.0);
+  float s2 = pow(max(dot(nrm, normalize(vec3(-0.30,0.46,0.83))),0.0), 160.0);
+  col += vec3(0.92,0.90,1.0)*s1*0.5 + vec3(1.0)*s2;
 
-  // ── glass speculars ──
-  float sp1 = pow(max(dot(n,normalize(vec3(-0.45,0.62,0.65))),0.0),26.0);
-  float sp2 = pow(max(dot(n,normalize(vec3(-0.30,0.46,0.83))),0.0),150.0);
-  float sp3 = pow(max(dot(n,normalize(vec3(0.40,-0.50,0.77))),0.0),90.0);
-  col += vec3(0.92,0.88,1.0)*sp1*0.55 + vec3(1.0)*sp2*1.0 + vec3(0.9,0.92,1.0)*sp3*0.35;
+  // pink caustic where the ball meets the stand
+  col += hsl2rgb(vec3(fract(hue+0.02),1.0,0.6)) * pow(max(-nrm.y-0.25,0.0),2.0) * 0.7;
 
-  col *= 1.0+en*0.25;
-  col = col/(1.0+col*0.42);
-  col = pow(col, vec3(0.92));
+  col *= 1.0 + en*0.25;
+  col  = col/(1.0+col*0.40);            // tonemap
+  col  = pow(col, vec3(0.90));
 
-  // glass transparency: clear in the middle, denser rim, opaque highlights
-  float content = clamp(ribbon*0.9 + coreG*1.2 + rings*0.8 + (gl1+gl2)*0.6 + dn0*0.15, 0.0, 1.0);
-  float alphaV = clamp(0.42 + 0.32*fres + 0.45*content + window*0.55 + sp1*0.6 + sp2, 0.0, 1.0);
+  float cov = smoothstep(0.0, 0.012, disc);   // anti-alias the silhouette
+  float content = clamp(length(interior)*0.8 + core + rim*0.6, 0.0, 1.0);
+  float alpha = clamp(0.46 + 0.34*fres + 0.50*content + s1*0.6 + s2, 0.0, 1.0);
 
-  gl_FragColor = vec4(col*inside, alphaV*inside);
+  gl_FragColor = vec4(col*cov, alpha*cov);
 }`;
 
   function compile(type, src) {
@@ -501,9 +510,11 @@ void main(){
   gl.vertexAttribPointer(loc, 2, gl.FLOAT, false, 0, 0);
 
   const U = {};
-  ['uRes','uTime','uHue','uEnergy','uTilt'].forEach(u => U[u] = gl.getUniformLocation(prog, u));
+  ['uRes','uTime','uHue','uEnergy','uTilt','uSteps'].forEach(u => U[u] = gl.getUniformLocation(prog, u));
   gl.viewport(0, 0, canvas.width, canvas.height);
   gl.uniform2f(U.uRes, canvas.width, canvas.height);
+  // interior march quality — heavier for the big orb, lighter for the mini one
+  gl.uniform1f(U.uSteps, size >= 160 ? 22.0 : 12.0);
   gl.disable(gl.DEPTH_TEST);
   gl.disable(gl.BLEND);
 
