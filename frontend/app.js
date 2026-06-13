@@ -598,23 +598,10 @@ resetOrbIdle();
 const mainOrb   = createOrb(document.getElementById('orb-canvas'),        240, true);
 const answerOrb = createOrb(document.getElementById('answer-orb-canvas'),  90, false);
 
-// ─── Mystic decor: rune wheel + rising motes ───────────────────
+// ─── Mystic decor: rising motes ────────────────────────────────
 function buildOrbDecor() {
-  const wrap = document.getElementById('orb-wrapper');
   const section = document.getElementById('orb-section');
-  if (!wrap || !section) return;
-
-  const runes = ['☽','✦','☿','✧','♆','✶','☾','⚹','♀︎','✵','♃','✺'];
-  const wheel = document.createElement('div');
-  wheel.className = 'orb-runes';
-  runes.forEach((ch, i) => {
-    const s = document.createElement('span');
-    s.textContent = ch;
-    s.style.setProperty('--a', (i * 360 / runes.length) + 'deg');
-    s.style.setProperty('--tw', (Math.random() * 4.5).toFixed(1) + 's');
-    wheel.appendChild(s);
-  });
-  wrap.appendChild(wheel);
+  if (!section) return;
 
   const motes = document.createElement('div');
   motes.className = 'orb-motes';
@@ -634,17 +621,6 @@ function buildOrbDecor() {
     motes.appendChild(m);
   }
   section.appendChild(motes);
-
-  const ped = document.createElement('div');
-  ped.className = 'orb-pedestal';
-  ped.innerHTML = `
-    <div class="pedestal-glow"></div>
-    <div class="pedestal-top"></div>
-    <div class="pedestal-body">☽ ✦ ☿ ✧ ♆ ✶ ☾</div>
-    <div class="pedestal-base"></div>
-    <div class="floor-ring"></div>
-    <div class="floor-ring floor-ring-2"></div>`;
-  wrap.insertAdjacentElement('afterend', ped);
 }
 buildOrbDecor();
 
@@ -711,11 +687,6 @@ const LANGS = {
     paywallSubB:      'Оракул знает — открой доступ',
     btnComeBack:      '🌙 Вернуться завтра (бесплатно)',
     langBtn:          '🌐 UA',
-    catAll:           'Все',
-    catLove:          'Любовь',
-    catMoney:         'Деньги',
-    catWork:          'Карьера',
-    catLocked:        '🔒 Категории доступны в Премиум',
     streakToast:      (n, b) => `🔥 ${n} дней подряд! +${b} бонусных вопроса`,
     offerTitle:       'Только сейчас: 7 дней за полцены!',
     offerBtn:         'Забрать',
@@ -767,11 +738,6 @@ const LANGS = {
     paywallSubB:      'Оракул знає — відкрий доступ',
     btnComeBack:      '🌙 Повернутись завтра (безкоштовно)',
     langBtn:          '🌐 RU',
-    catAll:           'Все',
-    catLove:          'Кохання',
-    catMoney:         'Гроші',
-    catWork:          'Кар\'єра',
-    catLocked:        '🔒 Категорії доступні в Преміум',
     streakToast:      (n, b) => `🔥 ${n} днів поспіль! +${b} бонусних питання`,
     offerTitle:       'Лише зараз: 7 днів за пів ціни!',
     offerBtn:         'Забрати',
@@ -847,10 +813,6 @@ function applyLang() {
   const hb = document.getElementById('btn-history-back');
   if (hb) hb.textContent = L.historyBack;
 
-  [['cat-all-label', L.catAll], ['cat-love-label', L.catLove], ['cat-money-label', L.catMoney], ['cat-work-label', L.catWork]].forEach(([id, t]) => {
-    const el = document.getElementById(id);
-    if (el) el.textContent = t;
-  });
   const ot = document.getElementById('offer-title');
   if (ot) ot.textContent = L.offerTitle;
   const ob = document.getElementById('offer-btn');
@@ -930,37 +892,9 @@ function updateCounter() {
     el.className = `question-counter${left <= 1 ? ' low' : ''}`;
     if (btn) { btn.textContent = L.premiumDefault; btn.classList.remove('is-premium'); }
   }
-  updateCatChips();
 }
 
-// ─── Категорії питань ───────────────────────────────────────────
-let selectedCat = 'general';
-
-function updateCatChips() {
-  document.querySelectorAll('.cat-chip').forEach(chip => {
-    const locked = chip.dataset.cat !== 'general' && !userStatus.isPremium;
-    chip.classList.toggle('locked', locked);
-  });
-  if (!userStatus.isPremium && selectedCat !== 'general') {
-    selectedCat = 'general';
-    document.querySelectorAll('.cat-chip').forEach(c => c.classList.toggle('active', c.dataset.cat === 'general'));
-  }
-}
-
-document.querySelectorAll('.cat-chip').forEach(chip => {
-  chip.addEventListener('click', () => {
-    const cat = chip.dataset.cat;
-    if (cat !== 'general' && !userStatus.isPremium) {
-      showToast(LANGS[currentLang].catLocked);
-      if (tg?.HapticFeedback) tg.HapticFeedback.notificationOccurred('warning');
-      showPaywall();
-      return;
-    }
-    selectedCat = cat;
-    document.querySelectorAll('.cat-chip').forEach(c => c.classList.toggle('active', c === chip));
-    if (tg?.HapticFeedback) tg.HapticFeedback.selectionChanged();
-  });
-});
+const selectedCat = 'general';
 
 // ─── Toast ──────────────────────────────────────────────────────
 let toastTimer = null;
