@@ -361,34 +361,43 @@ float fbm3(vec3 p){
   return v;
 }
 
-// the studio environment reflected by / seen through the glass
+float hash21(vec2 p){
+  p = fract(p*vec2(123.34,345.45));
+  p += dot(p, p + 34.345);
+  return fract(p.x*p.y);
+}
+
+// studio environment used for glass reflection + rim (dark, so the glass stays deep not milky)
 vec3 envCol(vec3 d, float hue){
-  vec3 c = vec3(0.015,0.012,0.030);
-  c += vec3(0.50,0.58,0.82) * smoothstep(-0.10,0.92,d.y) * 0.50;            // soft top light
-  c += hsl2rgb(vec3(fract(hue),0.95,0.55)) * smoothstep(0.0,1.0,-d.x*0.5-d.y*0.4+0.4) * 0.30; // pink fill
-  c += hsl2rgb(vec3(fract(hue+0.10),1.0,0.70)) * smoothstep(0.2,1.0,d.x) * 0.14;
-  c += vec3(1.0)        * pow(max(dot(d,normalize(vec3(-0.5,0.65,0.55))),0.0), 50.0)  * 1.4; // softbox
-  c += vec3(1.0,0.92,1.0)* pow(max(dot(d,normalize(vec3(0.55,0.35,0.6))),0.0), 220.0) * 0.9; // glint
+  vec3 c = vec3(0.008,0.008,0.022);
+  c += vec3(0.30,0.36,0.62) * smoothstep(0.25,0.98,d.y) * 0.30;   // faint cool top sky
   return c;
 }
 
-// nebula density at a point inside the unit sphere (local galaxy space)
-float density(vec3 q, float t){
-  float n1  = fbm3(q*1.8 + vec3(0.0, t*0.10, 0.0));    // domain warp
-  float n   = fbm3(q*2.4 + n1*1.6 + vec3(0.0,0.0,t*0.05));
-  float rad = length(q);
-  float disc= exp(-q.y*q.y*3.2);                       // flatten into a galactic disc
-  float ball= smoothstep(1.0,0.2,rad);                 // fade out toward the glass shell
-  float arms= 0.6+0.4*sin(atan(q.z,q.x)*2.0 + rad*5.0 - t*0.30); // spiral arms
-  return smoothstep(0.46,0.85,n) * disc * ball * arms;
+// deep space seen through the lens: mostly black, coloured wisps + twinkling stars
+vec3 deepSpace(vec3 d, float hue, float t){
+  float n1 = fbm3(d*2.6 + vec3(0.0,0.0,t*0.015));
+  float n2 = fbm3(d*6.0 + n1*1.5 - vec3(t*0.012,0.0,0.0));
+  float neb = smoothstep(0.50,0.95,n1);                 // colour only in the dense wisps
+  vec3 col = mix(hsl2rgb(vec3(fract(hue-0.04),0.95,0.14)),
+                 hsl2rgb(vec3(fract(hue+0.10),1.00,0.42)), n2) * neb * 0.7;
+  vec2 uvp = vec2(atan(d.z,d.x), asin(clamp(d.y,-1.0,1.0)));
+  for(int k=0;k<2;k++){
+    float sc = 24.0 + float(k)*40.0;
+    vec2 g  = uvp*sc;
+    vec2 f  = fract(g)-0.5;
+    float h = hash21(floor(g) + float(k)*19.7);
+    float tw = 0.5+0.5*sin(t*(0.8+h*2.5)+h*40.0);
+    col += vec3(1.0,0.96,0.95) * step(0.92,h) * exp(-dot(f,f)*60.0) * tw * 1.5;
+  }
+  return col;
 }
-vec3 nebColor(vec3 q, float hue){
-  float rad = length(q);
-  vec3 cCore = hsl2rgb(vec3(fract(hue+0.10),0.90,0.86));
-  vec3 cMid  = hsl2rgb(vec3(fract(hue),     1.00,0.60));
-  vec3 cEdge = hsl2rgb(vec3(fract(hue-0.06),0.95,0.42));
-  vec3 c = mix(cCore, cMid, smoothstep(0.0,0.5,rad));
-  return mix(c, cEdge, smoothstep(0.45,0.95,rad));
+
+// soft clumpy fog inside the glass — lots of empty gaps so it reads as depth, not a fill
+float fog(vec3 q, float t){
+  float n1 = fbm3(q*1.7 + vec3(0.0,t*0.07,0.0));
+  float n  = fbm3(q*2.7 + n1*1.7 + vec3(0.0,0.0,t*0.04));
+  return smoothstep(0.55,0.92,n) * smoothstep(1.0,0.18,length(q));
 }
 
 void main(){
@@ -400,90 +409,93 @@ void main(){
   // perspective camera, tilted by touch for parallax
   vec3 ro = vec3(0.0,0.0,3.25);
   vec3 rd = normalize(vec3(uv, -2.7));
-  mat3 vt = rotY(uTilt.x*0.22) * rotX(-uTilt.y*0.22);
+  mat3 vt = rotY(uTilt.x*0.20) * rotX(-uTilt.y*0.20);
   ro = vt*ro; rd = vt*rd;
 
-  // analytic ray vs unit sphere intersection (real 3D geometry)
+  // analytic ray vs unit sphere (real 3D geometry)
   float b  = dot(ro,rd);
   float c0 = dot(ro,ro) - 1.0;
   float disc = b*b - c0;
-
-  if(disc < 0.0){                       // ray misses the glass - faint aura only
-    float g = exp(disc*2.2);
-    vec3 gcol = hsl2rgb(vec3(fract(hue+0.05),0.9,0.6)) * g * 0.22;
-    gl_FragColor = vec4(gcol, g*0.16);
-    return;
-  }
+  if(disc < 0.0){ gl_FragColor = vec4(0.0); return; }   // outside the glass -> fully transparent
 
   float sq  = sqrt(disc);
-  vec3 pos  = ro + rd*(-b - sq);        // front entry point
-  vec3 nrm  = pos;                       // surface normal (unit sphere at origin)
+  vec3 pos  = ro + rd*(-b - sq);        // front surface point
+  vec3 nrm  = pos;                       // normal (unit sphere @ origin)
   float ndv = max(dot(-rd, nrm), 0.0);
-  float fres = 0.03 + 0.97*pow(1.0-ndv, 5.0);
+  float fres = 0.04 + 0.96*pow(1.0-ndv, 5.0);
 
-  // the galaxy spins in 3D (auto + touch)
-  mat3 gm = rotY(t*(0.05+en*0.22)) * rotX(0.42 + uTilt.y*0.5) * rotY(uTilt.x*0.7);
+  // refract through the glass -> lens direction that bends the background
+  vec3 rr = refract(rd, nrm, 1.0/1.46);
 
-  // refract into the glass and ray-march the interior volume
-  vec3  rr = refract(rd, nrm, 1.0/1.47);
-  float dt = 2.05 / max(uSteps, 1.0);
-  float jit = hash13(vec3(gl_FragCoord.xy, t));
+  vec3 cCore = hsl2rgb(vec3(fract(hue+0.12),0.85,0.85));
+  vec3 cMid  = hsl2rgb(vec3(fract(hue),     1.00,0.62));
+
+  // the whole interior space spins in 3D (auto + touch)
+  mat3 gm = rotY(t*(0.05+en*0.20) + uTilt.x*0.6) * rotX(0.35 + uTilt.y*0.45);
+
+  // distorted starfield seen through the lens
+  vec3 bg = deepSpace(normalize(gm*rr), hue, t);
+
+  // soft glow from the heart that lights the surrounding fog
+  float pulse = 0.5+0.5*sin(t*(1.0+en*3.5));
+
+  // march the inner fog along the refracted ray, lit by the central heart
+  float dt  = 2.0 / max(uSteps,1.0);
+  float jit = hash21(gl_FragCoord.xy + fract(t));
   vec3  sp  = pos + rr*dt*jit;
-  vec3  acc = vec3(0.0);
-  float trans = 1.0;
+  vec3  fogAcc = vec3(0.0);
+  float fogT   = 1.0;
   for(int i=0;i<MAX_STEPS;i++){
     if(float(i) >= uSteps) break;
-    if(dot(sp,sp) > 1.0)  break;        // left the sphere
+    if(dot(sp,sp) > 1.0) break;
     vec3 q = gm*sp;
-    float d = density(q, t);
+    float d = fog(q,t);
     if(d > 0.001){
-      acc   += nebColor(q, hue) * d * trans * dt * 7.0;
-      trans *= 1.0 - d*dt*5.0;
-      if(trans < 0.03) break;
+      float rl  = length(q);
+      vec3  fc  = mix(cCore, cMid, smoothstep(0.0,0.6,rl));   // brighter toward the heart
+      float lit = 0.35 + 1.6*exp(-rl*rl*2.2);                 // central light falloff
+      fogAcc += fc * d * fogT * dt * 9.0 * lit;
+      fogT   *= 1.0 - d*dt*4.5;
+      if(fogT < 0.04) break;
     }
     sp += rr*dt;
   }
 
-  // luminous core: glow when the refracted ray passes near the heart
-  float pulse = 0.5+0.5*sin(t*(1.1+en*4.0));
-  float ca    = length(pos - rr*dot(pos,rr));
-  float core  = exp(-ca*ca*6.0);
-  vec3  coreCol = vec3(1.0,0.96,1.0)*0.7 + hsl2rgb(vec3(fract(hue+0.08),1.0,0.75))*0.6;
-  acc += coreCol * core * (0.6 + 0.5*pulse + 0.8*en) * trans;
+  // luminous heart at the centre (coloured, not blown-out white)
+  float ca    = length(pos - rr*dot(pos,rr));   // distance of the inner ray from the centre
+  float core  = exp(-ca*ca*10.0);
+  vec3  coreCol = mix(cCore, vec3(1.0,0.97,1.0), 0.45);
 
-  // sparse stars drifting with the galaxy
-  vec3 sc = gm*pos*6.0;
-  float st = hash13(floor(sc));
-  acc += vec3(1.0,0.97,0.95) * step(0.93, st)
-       * (0.5+0.5*sin(t*(1.5+st*3.0)+st*40.0)) * 0.5 * (0.4+0.6*ndv);
+  // compose interior: deep starfield, glowing fog over it, bright heart
+  vec3 inside = bg * fogT + fogAcc;
+  inside += coreCol * core * (0.55 + 0.35*pulse + 0.9*en);
 
-  vec3 interior = acc;
+  // vertical light/shadow gradient -> real volume (lit top, dark bottom)
+  inside *= 0.55 + 0.45*smoothstep(-0.9, 0.7, nrm.y);
 
-  // glass = interior seen through it + fresnel reflection of the room
+  // glass: reflect the room, stronger toward the rim (fresnel)
   vec3 refl = envCol(reflect(rd, nrm), hue);
-  vec3 col  = mix(interior, refl, fres*0.7);
+  vec3 col  = mix(inside, refl, fres*0.30);
 
-  // iridescent fresnel rim
-  float rim = pow(1.0-ndv, 2.6);
-  col += hsl2rgb(vec3(fract(hue+0.42*rim+0.05*sin(t*0.5)),0.85,0.72)) * rim * 0.55;
+  // iridescent rim
+  float rim = pow(1.0-ndv, 3.0);
+  col += hsl2rgb(vec3(fract(hue+0.45*rim+0.05*sin(t*0.4)),0.85,0.72)) * rim * 0.6;
 
-  // sharp surface speculars
-  float s1 = pow(max(dot(nrm, normalize(vec3(-0.45,0.62,0.65))),0.0), 30.0);
-  float s2 = pow(max(dot(nrm, normalize(vec3(-0.30,0.46,0.83))),0.0), 160.0);
-  col += vec3(0.92,0.90,1.0)*s1*0.5 + vec3(1.0)*s2;
+  // window speculars — the bright glass highlights that sell the "glass"
+  float s1 = pow(max(dot(nrm, normalize(vec3(-0.48,0.64,0.60))),0.0), 16.0); // big soft window
+  float s2 = pow(max(dot(nrm, normalize(vec3(-0.40,0.55,0.73))),0.0), 230.0);// tight glint
+  float s3 = pow(max(dot(nrm, normalize(vec3(0.34,-0.52,0.78))),0.0), 12.0); // soft bounce below
+  col += vec3(0.97,0.95,1.0)*s1*0.95 + vec3(1.0)*s2*1.3 + cMid*s3*0.22;
 
   // pink caustic where the ball meets the stand
-  col += hsl2rgb(vec3(fract(hue+0.02),1.0,0.6)) * pow(max(-nrm.y-0.25,0.0),2.0) * 0.7;
+  col += cMid * pow(max(-nrm.y-0.25,0.0),2.0) * 0.5;
 
   col *= 1.0 + en*0.25;
-  col  = col/(1.0+col*0.40);            // tonemap
-  col  = pow(col, vec3(0.90));
+  col  = col/(1.0+col*0.36);            // tonemap
+  col  = pow(col, vec3(0.92));
 
-  float cov = smoothstep(0.0, 0.012, disc);   // anti-alias the silhouette
-  float content = clamp(length(interior)*0.8 + core + rim*0.6, 0.0, 1.0);
-  float alpha = clamp(0.46 + 0.34*fres + 0.50*content + s1*0.6 + s2, 0.0, 1.0);
-
-  gl_FragColor = vec4(col*cov, alpha*cov);
+  float cov = smoothstep(0.0, 0.012, disc);   // silhouette AA
+  gl_FragColor = vec4(col*cov, cov);
 }`;
 
   function compile(type, src) {
