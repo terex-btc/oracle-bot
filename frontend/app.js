@@ -301,7 +301,7 @@ function OrbCanvas(canvas, size, isMain) {
   return { setColor, pause, resume, stop: () => { paused = true; cancelAnimationFrame(raf); }, setEnergy: noop, setTilt: noop, clearTilt: noop };
 }
 
-// ─── WebGL Mystic Orb — galaxy inside a crystal sphere ────────
+// ─── WebGL Mystic Orb — golden flame oracle in a crystal sphere ────────
 function OrbGL(canvas, size) {
   const dpr = Math.min(window.devicePixelRatio || 1, 2);
   canvas.width  = size * dpr;
@@ -367,37 +367,51 @@ float hash21(vec2 p){
   return fract(p.x*p.y);
 }
 
-// studio environment used for glass reflection + rim (dark, so the glass stays deep not milky)
+// dark studio env for glass reflection + rim (keeps glass deep, not milky)
 vec3 envCol(vec3 d, float hue){
-  vec3 c = vec3(0.008,0.008,0.022);
-  c += vec3(0.30,0.36,0.62) * smoothstep(0.25,0.98,d.y) * 0.30;   // faint cool top sky
+  vec3 c = vec3(0.010,0.010,0.026);
+  c += vec3(0.30,0.34,0.60) * smoothstep(0.25,0.98,d.y) * 0.26;    // faint cool top sky
+  c += vec3(0.55,0.40,0.16) * smoothstep(0.10,-0.95,d.y) * 0.20;   // warm bounce from below
   return c;
 }
 
-// deep space seen through the lens: mostly black, coloured wisps + twinkling stars
-vec3 deepSpace(vec3 d, float hue, float t){
-  float n1 = fbm3(d*2.6 + vec3(0.0,0.0,t*0.015));
-  float n2 = fbm3(d*6.0 + n1*1.5 - vec3(t*0.012,0.0,0.0));
-  float neb = smoothstep(0.50,0.95,n1);                 // colour only in the dense wisps
-  vec3 col = mix(hsl2rgb(vec3(fract(hue-0.04),0.95,0.14)),
-                 hsl2rgb(vec3(fract(hue+0.10),1.00,0.42)), n2) * neb * 0.7;
+// cosmic backdrop seen through the lens: purple/blue nebula + twinkling coloured stars
+vec3 cosmos(vec3 d, float hue, float t){
+  float n1 = fbm3(d*2.6 + vec3(0.0,0.0,t*0.02));
+  float n2 = fbm3(d*5.6 + n1*1.4);
+  float neb = smoothstep(0.34,0.86,n1);                 // wider, brighter nebula
+  vec3 a = hsl2rgb(vec3(fract(hue-0.03),0.92,0.22));    // deep magenta
+  vec3 b = hsl2rgb(vec3(fract(hue+0.18),0.95,0.54));    // blue-violet
+  vec3 col = mix(a,b,n2) * neb * 1.7;
+  col += a * 0.12;                                       // faint ambient nebula fill
   vec2 uvp = vec2(atan(d.z,d.x), asin(clamp(d.y,-1.0,1.0)));
   for(int k=0;k<2;k++){
-    float sc = 24.0 + float(k)*40.0;
+    float sc = 22.0 + float(k)*42.0;
     vec2 g  = uvp*sc;
     vec2 f  = fract(g)-0.5;
-    float h = hash21(floor(g) + float(k)*19.7);
+    float h = hash21(floor(g) + float(k)*13.3);
     float tw = 0.5+0.5*sin(t*(0.8+h*2.5)+h*40.0);
-    col += vec3(1.0,0.96,0.95) * step(0.92,h) * exp(-dot(f,f)*60.0) * tw * 1.5;
+    vec3 scol = mix(vec3(1.0,0.97,0.95), hsl2rgb(vec3(fract(h*1.3),0.80,0.72)), 0.5);
+    col += scol * step(0.90,h) * exp(-dot(f,f)*52.0) * tw * 2.0;
   }
   return col;
 }
 
-// soft clumpy fog inside the glass — lots of empty gaps so it reads as depth, not a fill
-float fog(vec3 q, float t){
-  float n1 = fbm3(q*1.7 + vec3(0.0,t*0.07,0.0));
-  float n  = fbm3(q*2.7 + n1*1.7 + vec3(0.0,0.0,t*0.04));
-  return smoothstep(0.55,0.92,n) * smoothstep(1.0,0.18,length(q));
+// rising, curling golden flame tendrils — thin glowing filaments fed from the bottom
+float fireTendril(vec3 p, float t){
+  vec3 q = p;
+  float a = p.y*1.7 - t*0.8;              // twist grows with height + time -> rising curl
+  float s = sin(a), c = cos(a);
+  q.xz = mat2(c,-s,s,c) * q.xz;
+  q.x += 0.10*sin(p.y*3.4 - t*1.2);       // sideways sway -> elegant S-ribbon
+  vec3 cc = q*vec3(2.6,1.5,2.6) + vec3(0.0,-t*1.6,0.0);     // scroll down -> reads as rising
+  float warp = noise3(cc*0.6);
+  float n = fbm3(cc + warp*1.8);
+  float ridge = 1.0 - abs(n*2.0-1.0);     // thin filaments where n ~ 0.5
+  ridge = pow(ridge, 4.0);
+  float r = length(p.xz);
+  float mask = smoothstep(0.82,0.05,r) * smoothstep(1.1,-0.8,p.y);    // narrow column, fed below
+  return ridge*mask;
 }
 
 void main(){
@@ -427,71 +441,63 @@ void main(){
   // refract through the glass -> lens direction that bends the background
   vec3 rr = refract(rd, nrm, 1.0/1.46);
 
-  vec3 cCore = hsl2rgb(vec3(fract(hue+0.12),0.85,0.85));
-  vec3 cMid  = hsl2rgb(vec3(fract(hue),     1.00,0.62));
+  // the whole interior spins slowly in 3D (auto + touch)
+  mat3 gm = rotY(t*(0.04+en*0.15) + uTilt.x*0.6) * rotX(0.12 + uTilt.y*0.4);
 
-  // the whole interior space spins in 3D (auto + touch)
-  mat3 gm = rotY(t*(0.05+en*0.20) + uTilt.x*0.6) * rotX(0.35 + uTilt.y*0.45);
+  // cosmic starfield seen through the lens
+  vec3 bg = cosmos(normalize(gm*rr), hue, t);
 
-  // distorted starfield seen through the lens
-  vec3 bg = deepSpace(normalize(gm*rr), hue, t);
+  float pulse = 0.5+0.5*sin(t*(1.0+en*3.0));
 
-  // soft glow from the heart that lights the surrounding fog
-  float pulse = 0.5+0.5*sin(t*(1.0+en*3.5));
-
-  // march the inner fog along the refracted ray, lit by the central heart
+  // march the refracted ray, accumulating glowing golden flame tendrils
   float dt  = 2.0 / max(uSteps,1.0);
   float jit = hash21(gl_FragCoord.xy + fract(t));
   vec3  sp  = pos + rr*dt*jit;
-  vec3  fogAcc = vec3(0.0);
-  float fogT   = 1.0;
+  vec3  fireAcc = vec3(0.0);
+  float trans   = 1.0;
   for(int i=0;i<MAX_STEPS;i++){
     if(float(i) >= uSteps) break;
     if(dot(sp,sp) > 1.0) break;
     vec3 q = gm*sp;
-    float d = fog(q,t);
-    if(d > 0.001){
-      float rl  = length(q);
-      vec3  fc  = mix(cCore, cMid, smoothstep(0.0,0.6,rl));   // brighter toward the heart
-      float lit = 0.35 + 1.6*exp(-rl*rl*2.2);                 // central light falloff
-      fogAcc += fc * d * fogT * dt * 9.0 * lit;
-      fogT   *= 1.0 - d*dt*4.5;
-      if(fogT < 0.04) break;
+    float dens = fireTendril(q, t);
+    dens = smoothstep(0.12, 0.60, dens);                               // crush haze -> distinct ribbons
+    if(dens > 0.002){
+      float h  = q.y*0.5+0.5;                                          // 0 bottom .. 1 top
+      vec3  fc = mix(vec3(1.0,0.82,0.42), vec3(1.0,0.40,0.07), smoothstep(0.0,0.85,h));
+      float emit = dens*dens*(1.0+en*1.5);
+      fireAcc += fc * emit * trans * dt * 15.0;
+      trans   *= 1.0 - emit*dt*3.0;
+      if(trans < 0.04) break;
     }
     sp += rr*dt;
   }
 
-  // luminous heart at the centre (coloured, not blown-out white)
-  float ca    = length(pos - rr*dot(pos,rr));   // distance of the inner ray from the centre
-  float core  = exp(-ca*ca*10.0);
-  vec3  coreCol = mix(cCore, vec3(1.0,0.97,1.0), 0.45);
+  // hot golden pool at the bottom — the flame source (bright base like the reference)
+  float baseGlow = smoothstep(-0.12, -0.95, nrm.y);
+  vec3  hot = vec3(1.0,0.55,0.15);
 
-  // compose interior: deep starfield, glowing fog over it, bright heart
-  vec3 inside = bg * fogT + fogAcc;
-  inside += coreCol * core * (0.55 + 0.35*pulse + 0.9*en);
-
-  // vertical light/shadow gradient -> real volume (lit top, dark bottom)
-  inside *= 0.55 + 0.45*smoothstep(-0.9, 0.7, nrm.y);
+  // compose interior: cosmos behind, flame tendrils over it, hot base
+  vec3 inside = bg * trans + fireAcc;
+  inside += hot * baseGlow * (0.40 + 0.22*pulse + 0.55*en);
+  // mild top-edge shade for glass volume (keep the bottom bright)
+  inside *= 0.85 + 0.15*smoothstep(0.95, -0.2, nrm.y);
 
   // glass: reflect the room, stronger toward the rim (fresnel)
   vec3 refl = envCol(reflect(rd, nrm), hue);
-  vec3 col  = mix(inside, refl, fres*0.30);
+  vec3 col  = mix(inside, refl, fres*0.26);
 
-  // iridescent rim
+  // warm rim
   float rim = pow(1.0-ndv, 3.0);
-  col += hsl2rgb(vec3(fract(hue+0.45*rim+0.05*sin(t*0.4)),0.85,0.72)) * rim * 0.6;
+  col += mix(hot, vec3(1.0,0.90,0.70), 0.55) * rim * 0.5;
 
   // window speculars — the bright glass highlights that sell the "glass"
-  float s1 = pow(max(dot(nrm, normalize(vec3(-0.48,0.64,0.60))),0.0), 16.0); // big soft window
-  float s2 = pow(max(dot(nrm, normalize(vec3(-0.40,0.55,0.73))),0.0), 230.0);// tight glint
-  float s3 = pow(max(dot(nrm, normalize(vec3(0.34,-0.52,0.78))),0.0), 12.0); // soft bounce below
-  col += vec3(0.97,0.95,1.0)*s1*0.95 + vec3(1.0)*s2*1.3 + cMid*s3*0.22;
+  float s1 = pow(max(dot(nrm, normalize(vec3(-0.46,0.62,0.62))),0.0), 18.0);  // big soft window
+  float s2 = pow(max(dot(nrm, normalize(vec3(-0.38,0.52,0.76))),0.0), 240.0); // tight glint
+  float s3 = pow(max(dot(nrm, normalize(vec3(0.30,-0.55,0.78))),0.0), 10.0);  // soft bounce below
+  col += vec3(1.0,0.98,0.92)*s1*0.85 + vec3(1.0)*s2*1.25 + hot*s3*0.25;
 
-  // pink caustic where the ball meets the stand
-  col += cMid * pow(max(-nrm.y-0.25,0.0),2.0) * 0.5;
-
-  col *= 1.0 + en*0.25;
-  col  = col/(1.0+col*0.36);            // tonemap
+  col *= 1.0 + en*0.22;
+  col  = col/(1.0+col*0.42);            // tonemap
   col  = pow(col, vec3(0.92));
 
   float cov = smoothstep(0.0, 0.012, disc);   // silhouette AA
