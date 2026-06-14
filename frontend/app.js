@@ -604,14 +604,15 @@ resetOrbIdle();
 const mainOrb   = createOrb(document.getElementById('orb-canvas'),        240, true);
 const answerOrb = createOrb(document.getElementById('answer-orb-canvas'),  90, false);
 
-// ─── Mystic decor: rising motes ────────────────────────────────
+// ─── Mystic decor: rising embers + gold pedestal ───────────────
 function buildOrbDecor() {
   const section = document.getElementById('orb-section');
+  const wrap = document.getElementById('orb-wrapper');
   if (!section) return;
 
   const motes = document.createElement('div');
   motes.className = 'orb-motes';
-  const colors = ['rgba(245,200,66,', 'rgba(244,63,143,', 'rgba(192,132,252,', 'rgba(255,255,255,'];
+  const colors = ['rgba(255,200,90,', 'rgba(255,150,50,', 'rgba(255,225,150,', 'rgba(255,255,255,'];
   for (let i = 0; i < 14; i++) {
     const m = document.createElement('i');
     const sz = (Math.random() * 2.5 + 1.5).toFixed(1);
@@ -627,6 +628,18 @@ function buildOrbDecor() {
     motes.appendChild(m);
   }
   section.appendChild(motes);
+
+  // simplified glowing gold pedestal cradling the orb (no symbols, no rings)
+  if (wrap) {
+    const ped = document.createElement('div');
+    ped.className = 'orb-pedestal';
+    ped.innerHTML = `
+      <div class="ped-glow"></div>
+      <div class="ped-cup"></div>
+      <div class="ped-stem"></div>
+      <div class="ped-foot"></div>`;
+    wrap.insertAdjacentElement('afterend', ped);
+  }
 }
 buildOrbDecor();
 
