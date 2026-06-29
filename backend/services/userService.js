@@ -1,6 +1,6 @@
 'use strict';
 
-const FREE_LIMIT = 2;
+const FREE_LIMIT = 3;
 const Q_MAX      = 1000;
 
 let pool;
@@ -43,7 +43,8 @@ async function initDb() {
         streak       INTEGER NOT NULL DEFAULT 0,
         last_streak_day TEXT,
         has_paid     BOOLEAN NOT NULL DEFAULT FALSE,
-        offer_until  BIGINT
+        offer_until  BIGINT,
+        lang         TEXT
       )
     `);
 
@@ -55,6 +56,7 @@ async function initDb() {
     await pool.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS last_streak_day TEXT`);
     await pool.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS has_paid BOOLEAN NOT NULL DEFAULT FALSE`);
     await pool.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS offer_until BIGINT`);
+    await pool.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS lang TEXT`);
 
     await pool.query(`
       CREATE TABLE IF NOT EXISTS questions (
@@ -122,6 +124,7 @@ async function initDb() {
         lastStreakDay: r.last_streak_day || null,
         hasPaid:      !!r.has_paid,
         offerUntil:   r.offer_until ? Number(r.offer_until) : null,
+        lang:         r.lang || null,
       };
     }
 
@@ -166,22 +169,23 @@ initDb();
 
 // ─── DB Write helpers ──────────────────────────────────────────────
 const USER_SQL = `INSERT INTO users
-  (user_id, daily_count, last_reset, premium_until, total_asked, last_seen, free_bonus, referred_by, username, first_name, source, streak, last_streak_day, has_paid, offer_until)
-  VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15)
+  (user_id, daily_count, last_reset, premium_until, total_asked, last_seen, free_bonus, referred_by, username, first_name, source, streak, last_streak_day, has_paid, offer_until, lang)
+  VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16)
   ON CONFLICT (user_id) DO UPDATE SET
     daily_count=$2, last_reset=$3, premium_until=$4,
     total_asked=$5, last_seen=$6, free_bonus=$7, referred_by=$8,
     username=COALESCE($9, users.username),
     first_name=COALESCE($10, users.first_name),
     source=COALESCE($11, users.source),
-    streak=$12, last_streak_day=$13, has_paid=$14, offer_until=$15`;
+    streak=$12, last_streak_day=$13, has_paid=$14, offer_until=$15,
+    lang=COALESCE($16, users.lang)`;
 
 function userParams(id, u) {
   return [id, u.dailyCount, u.lastReset, u.premiumUntil || null,
           u.totalAsked, u.lastSeen || null, u.freeBonus, u.referredBy || null,
           u.username || null, u.firstName || null,
           u.source || null, u.streak || 0, u.lastStreakDay || null,
-          !!u.hasPaid, u.offerUntil || null];
+          !!u.hasPaid, u.offerUntil || null, u.lang || null];
 }
 
 function dbSaveUser(id, u) {
@@ -241,7 +245,7 @@ function dbSaveQuestion(q) {
 function hydrate(userId) {
   const id = String(userId);
   if (!memUsers[id]) {
-    memUsers[id] = { dailyCount: 0, lastReset: today(), premiumUntil: null, totalAsked: 0, lastSeen: null, freeBonus: 0, referredBy: null, username: null, firstName: null, source: null, streak: 0, lastStreakDay: null, hasPaid: false, offerUntil: null };
+    memUsers[id] = { dailyCount: 0, lastReset: today(), premiumUntil: null, totalAsked: 0, lastSeen: null, freeBonus: 0, referredBy: null, username: null, firstName: null, source: null, streak: 0, lastStreakDay: null, hasPaid: false, offerUntil: null, lang: null };
   }
   const u = memUsers[id];
   if (u.lastReset !== today()) { u.dailyCount = 0; u.lastReset = today(); }
@@ -319,14 +323,36 @@ function startOffer(userId) {
   } catch { return null; }
 }
 
-function setUserInfo(userId, { username, firstName } = {}) {
+function setUserInfo(userId, { username, firstName, lang } = {}) {
   try {
     const { u, id } = hydrate(userId);
     let changed = false;
     if (username  && u.username  !== username)  { u.username  = String(username);  changed = true; }
     if (firstName && u.firstName !== firstName) { u.firstName = String(firstName); changed = true; }
+    if ((lang === 'ru' || lang === 'ua') && u.lang !== lang) { u.lang = lang; changed = true; }
     if (changed) dbSaveUser(id, u);
   } catch {}
+}
+
+// Read the user's chosen language ('ru'|'ua'), or null if never set.
+function getLang(userId) {
+  try {
+    const { u } = hydrate(userId);
+    return (u.lang === 'ru' || u.lang === 'ua') ? u.lang : null;
+  } catch { return null; }
+}
+
+// Set language only when none is stored yet (e.g. first /start, derived from
+// Telegram's language_code). An explicit in-app choice always wins over this.
+function setLangIfUnset(userId, lang) {
+  try {
+    const { u, id } = hydrate(userId);
+    if (u.lang) return u.lang;
+    if (lang !== 'ru' && lang !== 'ua') return null;
+    u.lang = lang;
+    dbSaveUser(id, u);
+    return lang;
+  } catch { return null; }
 }
 
 function activatePremium(userId, days = 30) {
@@ -446,6 +472,7 @@ function getUsers() {
     source:       u.source      || null,
     streak:       u.streak      || 0,
     hasPaid:      !!u.hasPaid,
+    lang:         u.lang        || null,
   })).sort((a, b) => b.totalAsked - a.totalAsked);
 }
 
@@ -575,4 +602,5 @@ module.exports = {
   getStats, getUsers, getQuestions,
   createGift, redeemGift, logEvent, getFunnelStats, getABVariant,
   setSource, markPaid, startOffer, logPayment, getSourceStats,
+  getLang, setLangIfUnset,
 };

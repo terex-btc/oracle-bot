@@ -569,13 +569,33 @@ const MAYBE = [
   },
 ];
 
-function getOracleAnswer() {
-  const rand = Math.random();
-  let pool;
-  if (rand < 0.42)      pool = YES;
-  else if (rand < 0.84) pool = NO;
-  else                  pool = MAYBE;
-  return pool[Math.floor(Math.random() * pool.length)];
+// FNV-1a 32-bit hash. Same input → same output, so the oracle returns a stable
+// answer for a given seed (user + question) instead of a slot-machine reroll.
+function hashStr(str) {
+  let h = 0x811c9dc5;
+  const s = String(str);
+  for (let i = 0; i < s.length; i++) {
+    h ^= s.charCodeAt(i);
+    h = Math.imul(h, 0x01000193);
+  }
+  return h >>> 0;
 }
 
-module.exports = { getOracleAnswer, YES, NO, MAYBE };
+// With a seed the answer is deterministic; without one it stays random.
+function getOracleAnswer(seed) {
+  let r1, r2;
+  if (seed) {
+    r1 = hashStr(seed)        / 4294967296;
+    r2 = hashStr(seed + '|i') / 4294967296;
+  } else {
+    r1 = Math.random();
+    r2 = Math.random();
+  }
+  let pool;
+  if (r1 < 0.42)      pool = YES;
+  else if (r1 < 0.84) pool = NO;
+  else                pool = MAYBE;
+  return pool[Math.floor(r2 * pool.length)];
+}
+
+module.exports = { getOracleAnswer, hashStr, YES, NO, MAYBE };

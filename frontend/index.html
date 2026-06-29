@@ -6,7 +6,7 @@
   <title>Оракул Судьбы</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link rel="stylesheet" href="style.css" />
+  <link rel="stylesheet" href="style.css?v=ritual-1" />
   <script src="https://telegram.org/js/telegram-web-app.js"></script>
 </head>
 <body>
@@ -39,8 +39,15 @@
         <div class="orb-status" id="orb-status">Сосредоточься на вопросе...</div>
       </div>
 
+      <div class="category-bar" id="category-bar"></div>
+
       <div class="question-section">
-        <div class="question-box">
+        <div class="compat-inputs" id="compat-inputs" style="display:none">
+          <input type="text" id="name-a" class="compat-input" maxlength="24" placeholder="Твоё имя" />
+          <span class="compat-amp">💞</span>
+          <input type="text" id="name-b" class="compat-input" maxlength="24" placeholder="Его имя" />
+        </div>
+        <div class="question-box" id="question-box">
           <textarea
             id="question-input"
             placeholder="Напиши свой вопрос здесь..."
@@ -147,8 +154,8 @@
 
         <div class="paywall-features">
           <span>✓ Безлімітні питання</span>
-          <span>✓ Всі категорії</span>
-          <span>✓ Пріоритет долі</span>
+          <span>✓ Ритуали: кохання, сумісність, майбутнє</span>
+          <span>✓ Особисті розбори Оракула</span>
         </div>
 
         <div class="packs-divider">або поповни баланс питань</div>
@@ -212,6 +219,6 @@
 
   </div>
 
-  <script src="app.js?v=orb3d-5" type="module"></script>
+  <script src="app.js?v=ritual-1" type="module"></script>
 </body>
 </html>

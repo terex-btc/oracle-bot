@@ -1456,3 +1456,83 @@ body.keyboard-open .char-counter { display: none; }
   line-height: 1.4;
   opacity: 0.9;
 }
+
+/* ─── Category ritual bar ────────────────────────────────────── */
+.category-bar {
+  width: 100%;
+  max-width: 440px;
+  display: flex;
+  gap: 8px;
+  overflow-x: auto;
+  padding: 4px 12px 10px;
+  margin: 2px 0 6px;
+  scrollbar-width: none;
+  -webkit-overflow-scrolling: touch;
+  position: relative;
+  z-index: 2;
+}
+.category-bar::-webkit-scrollbar { display: none; }
+
+.cat-chip {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 14px;
+  border-radius: 999px;
+  font-size: 13px;
+  font-weight: 600;
+  white-space: nowrap;
+  color: var(--text-dim);
+  background: rgba(139, 61, 255, 0.07);
+  border: 1px solid rgba(139, 61, 255, 0.22);
+  cursor: pointer;
+  transition: transform .15s ease, color .2s ease, border-color .2s ease, box-shadow .25s ease, background .2s ease;
+}
+.cat-chip:active { transform: scale(0.95); }
+
+.cat-chip.active {
+  color: #fff;
+  background: linear-gradient(135deg, rgba(244,63,143,0.30), rgba(139,61,255,0.30));
+  border-color: rgba(244, 63, 143, 0.65);
+  box-shadow: 0 0 18px rgba(244, 63, 143, 0.35);
+}
+
+.cat-chip.locked { opacity: 0.78; }
+.cat-chip.locked .cat-label { opacity: 0.85; }
+
+.cat-emoji { font-size: 15px; line-height: 1; }
+.cat-lock  { font-size: 11px; margin-left: 1px; filter: drop-shadow(0 0 4px rgba(245,200,66,0.6)); }
+
+/* ─── Compatibility two-name inputs ─────────────────────────── */
+.compat-inputs {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  max-width: 420px;
+}
+.compat-input {
+  flex: 1 1 0;
+  min-width: 0;
+  padding: 16px 14px;
+  border-radius: var(--radius);
+  font-size: 16px;
+  text-align: center;
+  color: var(--text);
+  background: rgba(139, 61, 255, 0.06);
+  border: 1px solid rgba(244, 63, 143, 0.35);
+  outline: none;
+  transition: border-color .2s ease, box-shadow .25s ease;
+}
+.compat-input::placeholder { color: var(--text-dim); }
+.compat-input:focus {
+  border-color: rgba(244, 63, 143, 0.7);
+  box-shadow: 0 0 18px rgba(244, 63, 143, 0.28);
+}
+.compat-amp {
+  flex: 0 0 auto;
+  font-size: 20px;
+  filter: drop-shadow(0 0 8px rgba(244, 63, 143, 0.6));
+  animation: offer-pulse 2.4s ease-in-out infinite;
+}

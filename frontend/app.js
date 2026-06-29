@@ -8,6 +8,14 @@ function escapeHtml(s) {
 
 const tg = window.Telegram?.WebApp;
 
+// Raw signed initData — sent with every API call so the server can verify identity.
+const INIT_DATA = tg?.initData || '';
+function apiFetch(url, opts = {}) {
+  const headers = { ...(opts.headers || {}) };
+  if (INIT_DATA) headers['X-Telegram-Init-Data'] = INIT_DATA;
+  return fetch(url, { ...opts, headers });
+}
+
 function applyTopInset() {
   const deviceTop  = tg?.safeAreaInset?.top        ?? 0;
   const contentTop = tg?.contentSafeAreaInset?.top ?? 0;
@@ -463,7 +471,10 @@ void main(){
     dens = smoothstep(0.12, 0.60, dens);                               // crush haze -> distinct ribbons
     if(dens > 0.002){
       float h  = q.y*0.5+0.5;                                          // 0 bottom .. 1 top
-      vec3  fc = mix(vec3(1.0,0.82,0.42), vec3(1.0,0.40,0.07), smoothstep(0.0,0.85,h));
+      // gold base near the source, rising into pink→violet neon at the tips (premium aesthetic)
+      vec3  warmFc = mix(vec3(1.0,0.82,0.42), vec3(1.0,0.42,0.10), smoothstep(0.0,0.55,h));
+      vec3  neonFc = mix(vec3(1.0,0.40,0.85), vec3(0.62,0.42,1.0), smoothstep(0.45,1.0,h));
+      vec3  fc = mix(warmFc, neonFc, smoothstep(0.42,0.92,h));
       float emit = dens*dens*(1.0+en*1.5);
       fireAcc += fc * emit * trans * dt * 15.0;
       trans   *= 1.0 - emit*dt*3.0;
@@ -489,6 +500,8 @@ void main(){
   // warm rim
   float rim = pow(1.0-ndv, 3.0);
   col += mix(hot, vec3(1.0,0.90,0.70), 0.55) * rim * 0.5;
+  // violet neon halo on the glass edge — premium pink/purple glow
+  col += vec3(0.72,0.40,1.0) * pow(1.0-ndv, 4.0) * 0.40;
 
   // window speculars — the bright glass highlights that sell the "glass"
   float s1 = pow(max(dot(nrm, normalize(vec3(-0.46,0.62,0.62))),0.0), 18.0);  // big soft window
@@ -663,6 +676,8 @@ const LANGS = {
     badge:            '🔮 ОРАКУЛ СУДЬБЫ',
     subtitle:         'задай вопрос — получи ответ судьбы',
     placeholder:      'Напиши свой вопрос здесь...',
+    compatNameA:      'Твоё имя',
+    compatNameB:      'Его имя',
     askBtn:           'Спросить Оракул',
     orbDefault:       'Сосредоточься на вопросе...',
     orbFocus:         'Сначала задай вопрос...',
@@ -670,7 +685,7 @@ const LANGS = {
     orbPremium:       '⭐ Добро пожаловать в Премиум!',
     thinking:         ['Оракул слышит тебя...', 'Нити судьбы сплетаются...', 'Ответ раскрывается...'],
     counterPremium:   '⭐ ПРЕМИУМ — БЕЗЛИМИТ',
-    counterLeft:      n => `${n} из 2 вопросов сегодня`,
+    counterLeft:      n => `${n} из 3 вопросов сегодня`,
     counterEmpty:     'Лимит исчерпан — вернись завтра',
     premiumActive:    '⭐ Активен',
     premiumDefault:   '⭐ Премиум',
@@ -693,8 +708,8 @@ const LANGS = {
     planDescLifetime: 'Навечно ♾️',
     planBtn:          'Выбрать',
     featUnlimited:    '✓ Безлимитные вопросы',
-    featCategories:   '✓ Все категории',
-    featPriority:     '✓ Приоритет судьбы',
+    featCategories:   '✓ Ритуалы: любовь, совместимость, будущее',
+    featPriority:     '✓ Личные разборы Оракула',
     packDivider:      'или пополни баланс вопросов',
     packBtn:          'Купить',
     historyTitle:     '🔮 Мои вопросы',
@@ -714,6 +729,8 @@ const LANGS = {
     badge:            '🔮 ОРАКУЛ ДОЛІ',
     subtitle:         'постав питання — отримай відповідь долі',
     placeholder:      'Напиши своє питання тут...',
+    compatNameA:      'Твоє ім’я',
+    compatNameB:      'Його ім’я',
     askBtn:           'Запитати Оракул',
     orbDefault:       'Зосередься на питанні...',
     orbFocus:         'Спочатку постав питання...',
@@ -721,7 +738,7 @@ const LANGS = {
     orbPremium:       '⭐ Ласкаво просимо до Преміум!',
     thinking:         ['Оракул чує тебе...', 'Нитки долі сплітаються...', 'Відповідь розкривається...'],
     counterPremium:   '⭐ ПРЕМІУМ — БЕЗЛІМІТ',
-    counterLeft:      n => `${n} з 2 питань сьогодні`,
+    counterLeft:      n => `${n} з 3 питань сьогодні`,
     counterEmpty:     'Ліміт вичерпано — повернись завтра',
     premiumActive:    '⭐ Активний',
     premiumDefault:   '⭐ Преміум',
@@ -744,8 +761,8 @@ const LANGS = {
     planDescLifetime: 'Навічно ♾️',
     planBtn:          'Вибрати',
     featUnlimited:    '✓ Безлімітні питання',
-    featCategories:   '✓ Всі категорії',
-    featPriority:     '✓ Пріоритет долі',
+    featCategories:   '✓ Ритуали: кохання, сумісність, майбутнє',
+    featPriority:     '✓ Особисті розбори Оракула',
     packDivider:      'або поповни баланс питань',
     packBtn:          'Купити',
     historyTitle:     '🔮 Мої питання',
@@ -762,7 +779,8 @@ const LANGS = {
     offerBtn:         'Забрати',
   },
 };
-let currentLang = localStorage.getItem('oracle_lang') || 'ru';
+const _tgLang = (tg?.initDataUnsafe?.user?.language_code || '').toLowerCase();
+let currentLang = localStorage.getItem('oracle_lang') || (_tgLang.startsWith('uk') ? 'ua' : 'ru');
 
 function applyLang() {
   const L = LANGS[currentLang];
@@ -779,7 +797,15 @@ function applyLang() {
   }
 
   const qi = document.getElementById('question-input');
-  if (qi) qi.placeholder = L.placeholder;
+  if (qi) {
+    const cat = (typeof CATS !== 'undefined') ? CATS.find(c => c.key === selectedCat) : null;
+    qi.placeholder = (cat && cat.ph[currentLang]) ? cat.ph[currentLang] : L.placeholder;
+  }
+  const na = document.getElementById('name-a');
+  const nb = document.getElementById('name-b');
+  if (na) na.placeholder = L.compatNameA;
+  if (nb) nb.placeholder = L.compatNameB;
+  if (typeof renderCats === 'function') renderCats();
 
   const at = document.querySelector('.ask-text');
   if (at) at.textContent = L.askBtn;
@@ -844,6 +870,13 @@ function toggleLang() {
   currentLang = currentLang === 'ru' ? 'ua' : 'ru';
   localStorage.setItem('oracle_lang', currentLang);
   applyLang();
+  if (userId !== 'guest') {
+    apiFetch('/api/user/sync', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ lang: currentLang }),
+    }).catch(() => {});
+  }
 }
 
 // ─── User State ────────────────────────────────────────────────
@@ -852,13 +885,13 @@ const userId      = tgUser?.id      ?? 'guest';
 const tgUsername  = tgUser?.username   ?? null;
 const tgFirstName = tgUser?.first_name ?? null;
 
-let userStatus = { canAsk: true, remaining: 2, isPremium: false };
+let userStatus = { canAsk: true, remaining: 3, isPremium: false };
 let abVariant  = 'A';
 let lastAnswer = null;
 
 function trackEvent(event) {
   if (userId === 'guest') return;
-  fetch('/api/event', {
+  apiFetch('/api/event', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ userId, event, variant: abVariant }),
@@ -868,7 +901,7 @@ function trackEvent(event) {
 async function fetchStatus() {
   if (userId === 'guest') return;
   try {
-    const r = await fetch(`/api/user/${userId}/status`);
+    const r = await apiFetch(`/api/user/${userId}/status`);
     const data = await r.json();
     userStatus = data;
     abVariant  = data.variant || 'A';
@@ -877,12 +910,12 @@ async function fetchStatus() {
   } catch {}
 }
 
-// Sync username/name once on startup — not on every fetchStatus call
-if (userId !== 'guest' && (tgUsername || tgFirstName)) {
-  fetch('/api/user/sync', {
+// Sync name + language once on startup so bot messages match the user's language
+if (userId !== 'guest') {
+  apiFetch('/api/user/sync', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ userId, username: tgUsername, firstName: tgFirstName }),
+    body: JSON.stringify({ username: tgUsername, firstName: tgFirstName, lang: currentLang }),
   }).catch(() => {});
 }
 
@@ -906,14 +939,92 @@ function updateCounter() {
     el.className = 'question-counter premium';
     if (btn) { btn.textContent = L.premiumActive; btn.classList.add('is-premium'); }
   } else if (userStatus.remaining !== null) {
-    const left = userStatus.remaining ?? 2;
+    const left = userStatus.remaining ?? 3;
     el.textContent = (left > 0 ? L.counterLeft(left) : L.counterEmpty) + streakSuffix;
     el.className = `question-counter${left <= 1 ? ' low' : ''}`;
     if (btn) { btn.textContent = L.premiumDefault; btn.classList.remove('is-premium'); }
   }
+  if (typeof refreshCats === 'function') refreshCats();
 }
 
-const selectedCat = 'general';
+// ─── Категории-ритуалы ──────────────────────────────────────────
+let selectedCat = 'general';
+
+const CATS = [
+  { key: 'general', emoji: '🔮', premium: false, twoNames: false,
+    label: { ru: 'Да / Нет', ua: 'Так / Ні' },
+    ph:    { ru: 'Напиши свой вопрос здесь...', ua: 'Напиши своє питання тут...' } },
+  { key: 'love', emoji: '💗', premium: true, twoNames: false,
+    label: { ru: 'Любит ли он', ua: 'Чи кохає він' },
+    ph:    { ru: 'О ком думаешь? Напиши его имя...', ua: 'Про кого думаєш? Напиши його ім’я...' } },
+  { key: 'return', emoji: '💘', premium: true, twoNames: false,
+    label: { ru: 'Вернётся ли он', ua: 'Чи повернеться' },
+    ph:    { ru: 'О ком гадаешь? Напиши его имя...', ua: 'Про кого гадаєш? Напиши його ім’я...' } },
+  { key: 'compat', emoji: '💞', premium: true, twoNames: true,
+    label: { ru: 'Совместимость', ua: 'Сумісність' },
+    ph:    { ru: '', ua: '' } },
+  { key: 'future', emoji: '🌙', premium: true, twoNames: false,
+    label: { ru: 'Что меня ждёт', ua: 'Що мене чекає' },
+    ph:    { ru: 'О какой сфере жизни спросить?...', ua: 'Про яку сферу життя спитати?...' } },
+];
+
+function renderCats() {
+  const bar = document.getElementById('category-bar');
+  if (!bar) return;
+  bar.innerHTML = '';
+  CATS.forEach(cat => {
+    const chip = document.createElement('button');
+    chip.className = 'cat-chip' + (cat.key === selectedCat ? ' active' : '');
+    chip.dataset.key = cat.key;
+    const locked = cat.premium && !userStatus.isPremium;
+    if (locked) chip.classList.add('locked');
+    chip.innerHTML = `<span class="cat-emoji">${cat.emoji}</span>` +
+      `<span class="cat-label">${cat.label[currentLang] || cat.label.ru}</span>` +
+      (locked ? '<span class="cat-lock">🔒</span>' : '');
+    chip.addEventListener('click', () => selectCat(cat.key));
+    bar.appendChild(chip);
+  });
+}
+
+function selectCat(key) {
+  const cat = CATS.find(c => c.key === key);
+  if (!cat) return;
+  // Премиум-ритуал у бесплатного — открываем пейвол (главный хук монетизации)
+  if (cat.premium && !userStatus.isPremium) {
+    trackEvent('cat_locked_' + key);
+    showPaywall();
+    return;
+  }
+  selectedCat = key;
+  if (tg?.HapticFeedback) tg.HapticFeedback.selectionChanged?.();
+
+  // Поля имён для ритуала совместимости vs обычный ввод
+  const compat = document.getElementById('compat-inputs');
+  const qbox   = document.getElementById('question-box');
+  if (cat.twoNames) {
+    if (compat) compat.style.display = 'flex';
+    if (qbox)   qbox.style.display = 'none';
+  } else {
+    if (compat) compat.style.display = 'none';
+    if (qbox)   qbox.style.display = 'block';
+    if (input)  input.placeholder = cat.ph[currentLang] || cat.ph.ru;
+  }
+  renderCats();
+}
+
+// Обновить замки после смены языка/статуса, сохранив выбор
+function refreshCats() {
+  // Если выбранная категория стала недоступна (премиум истёк) — сброс на general
+  const cur = CATS.find(c => c.key === selectedCat);
+  if (cur && cur.premium && !userStatus.isPremium) {
+    selectedCat = 'general';
+    const compat = document.getElementById('compat-inputs');
+    const qbox   = document.getElementById('question-box');
+    if (compat) compat.style.display = 'none';
+    if (qbox)   qbox.style.display = 'block';
+  }
+  renderCats();
+}
 
 // ─── Toast ──────────────────────────────────────────────────────
 let toastTimer = null;
@@ -1061,12 +1172,28 @@ function triggerOrbBurst(color) {
 
 // ─── Ask ────────────────────────────────────────────────────────
 async function askOracle() {
-  const question = input.value.trim();
-  if (!question) {
-    input.focus();
-    orbStatus.textContent = LANGS[currentLang].orbFocus;
-    setTimeout(() => { orbStatus.textContent = LANGS[currentLang].orbDefault; }, 2000);
-    return;
+  const cat = CATS.find(c => c.key === selectedCat) || CATS[0];
+  let question, names;
+
+  if (cat.twoNames) {
+    const a = (document.getElementById('name-a')?.value || '').trim();
+    const b = (document.getElementById('name-b')?.value || '').trim();
+    if (!a || !b) {
+      (a ? document.getElementById('name-b') : document.getElementById('name-a'))?.focus();
+      orbStatus.textContent = LANGS[currentLang].orbFocus;
+      setTimeout(() => { orbStatus.textContent = LANGS[currentLang].orbDefault; }, 2000);
+      return;
+    }
+    names = [a, b];
+    question = `${a} 💞 ${b}`;
+  } else {
+    question = input.value.trim();
+    if (!question) {
+      input.focus();
+      orbStatus.textContent = LANGS[currentLang].orbFocus;
+      setTimeout(() => { orbStatus.textContent = LANGS[currentLang].orbDefault; }, 2000);
+      return;
+    }
   }
 
   askBtn.disabled = true;
@@ -1075,12 +1202,13 @@ async function askOracle() {
   showLoading(true);
 
   try {
-    const apiPromise = fetch('/api/ask', {
+    const apiPromise = apiFetch('/api/ask', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         question, userId,
         category:  selectedCat,
+        names:     names || undefined,
         username:  tgUsername  || undefined,
         firstName: tgFirstName || undefined,
       })
@@ -1173,7 +1301,7 @@ async function pollStatus(check, timeoutMs = 9000) {
   while (Date.now() < deadline) {
     await new Promise(r => setTimeout(r, 900));
     try {
-      const r = await fetch(`/api/user/${userId}/status`);
+      const r = await apiFetch(`/api/user/${userId}/status`);
       const data = await r.json();
       userStatus = data;
       abVariant = data.variant || 'A';
@@ -1196,7 +1324,7 @@ async function buyPremiumFlow(btn, plan = 'month') {
   btn.textContent = '⏳...';
   trackEvent('invoice_click');
   try {
-    const r = await fetch(`/api/user/${userId}/invoice`, {
+    const r = await apiFetch(`/api/user/${userId}/invoice`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ plan }),
@@ -1271,7 +1399,7 @@ async function buyPackFlow(btn, pack) {
   trackEvent('pack_click');
   let invoiceQuestions = 0;
   try {
-    const r = await fetch(`/api/user/${userId}/invoice`, {
+    const r = await apiFetch(`/api/user/${userId}/invoice`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ plan: pack }),
@@ -1331,7 +1459,7 @@ async function loadHistory() {
   if (loading) loading.textContent = L.historyLoading;
 
   try {
-    const r = await fetch(`/api/user/${userId}/history`);
+    const r = await apiFetch(`/api/user/${userId}/history`);
     const questions = await r.json();
     if (!list) return;
 
